@@ -33,7 +33,21 @@ var dbInstance = null;
 var IS_VERCEL = Boolean(process.env.VERCEL);
 var DATA_DIR = process.env.DESKTOP_USER_DATA ? path.join(process.env.DESKTOP_USER_DATA, "data") : IS_VERCEL ? path.join(os.tmpdir(), "mcgate-data") : path.join(process.cwd(), "data");
 var DB_FILE = path.join(DATA_DIR, "mcgate.sqlite");
-var SEED_DB_FILE = path.join(process.cwd(), "data", "mcgate.sqlite");
+function findSeedDbFile() {
+  const candidates = [
+    path.join(process.cwd(), "data", "mcgate.sqlite"),
+    path.join(CURRENT_DIR, "data", "mcgate.sqlite"),
+    path.join(CURRENT_DIR, "..", "data", "mcgate.sqlite"),
+    path.join(CURRENT_DIR, "mcgate.sqlite")
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {
+    }
+  }
+  return null;
+}
 var isSaving = false;
 var saveScheduled = false;
 function persistDatabase() {
@@ -98,12 +112,13 @@ async function getDb() {
       return file;
     }
   });
-  if (IS_VERCEL && !fs.existsSync(DB_FILE) && fs.existsSync(SEED_DB_FILE)) {
+  const seedFile = findSeedDbFile();
+  if (IS_VERCEL && !fs.existsSync(DB_FILE) && seedFile) {
     try {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.copyFileSync(SEED_DB_FILE, DB_FILE);
+      fs.copyFileSync(seedFile, DB_FILE);
     } catch (err) {
       console.warn("[DB] Failed copying seed DB to /tmp:", err);
     }
@@ -116,9 +131,9 @@ async function getDb() {
       console.warn("Could not read existing DB file, creating fresh DB:", e);
       dbInstance = new SQL.Database();
     }
-  } else if (fs.existsSync(SEED_DB_FILE)) {
+  } else if (seedFile) {
     try {
-      const fileBuffer = fs.readFileSync(SEED_DB_FILE);
+      const fileBuffer = fs.readFileSync(seedFile);
       dbInstance = new SQL.Database(fileBuffer);
     } catch (e) {
       console.warn("Could not read seed DB file, creating fresh DB:", e);
@@ -3666,34 +3681,67 @@ async function initDatabase() {
   try {
     await executeBatch([
       "DELETE FROM employees WHERE first_name IN ('Marcus', 'Elena', 'David', 'John') AND last_name IN ('Vance', 'Rostova', 'Chen', 'Doe');",
-      "DELETE FROM users WHERE email IN ('admin@mcgate.tech', 'hr@mcgate.tech', 'lead.eng@mcgate.tech', 'john.doe@mcgate.tech');",
-      "DELETE FROM users WHERE role != 'SUPER_ADMIN';",
-      "DELETE FROM employees WHERE user_id NOT IN (SELECT id FROM users);"
+      "DELETE FROM users WHERE email IN ('admin@mcgate.tech', 'hr@mcgate.tech', 'lead.eng@mcgate.tech', 'john.doe@mcgate.tech');"
     ]);
   } catch (e) {
-    console.error("Failed to clean demo accounts:", e);
+    console.error("Failed to clean legacy demo accounts:", e);
   }
   try {
-    const superUser = await queryOne("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
-    if (!superUser) {
-      const defaultPassword = "password123";
-      const salt = bcrypt3.genSaltSync(10);
-      const passwordHash = bcrypt3.hashSync(defaultPassword, salt);
-      const now = (/* @__PURE__ */ new Date()).toISOString();
-      await executeBatch([
-        `INSERT INTO users (email, password_hash, role, status, created_at, updated_at) VALUES ('superuser@mcgate.tech', '${passwordHash}', 'SUPER_ADMIN', 'ACTIVE', '${now}', '${now}');`
-      ]);
-      const created = await queryOne("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
-      if (created) {
+    const defaultPassword = "password123";
+    const salt = bcrypt3.genSaltSync(10);
+    const passwordHash = bcrypt3.hashSync(defaultPassword, salt);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    const coreAccounts = [
+      {
+        email: "superuser@mcgate.tech",
+        role: "SUPER_ADMIN",
+        code: "SU-001",
+        firstName: "Super",
+        lastName: "User",
+        jobTitle: "Super Administrator",
+        phone: "+49 30 555-0100"
+      },
+      {
+        email: "stephenosanebi@gmail.com",
+        role: "SUPER_ADMIN",
+        code: "MGT-000",
+        firstName: "Stephen",
+        lastName: "Osanebi",
+        jobTitle: "Principal Super Admin",
+        phone: "+49 30 555-0199"
+      },
+      {
+        email: "meshack.ossai@mcgatetechnologies.com",
+        role: "EMPLOYEE",
+        code: "MGT-002",
+        firstName: "Meshack",
+        lastName: "Ossai",
+        jobTitle: "Team Member",
+        phone: "+234 800 000 0000"
+      }
+    ];
+    for (const acc of coreAccounts) {
+      const existing = await queryOne("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", [acc.email]);
+      let userId = existing?.id;
+      if (!userId) {
         await executeBatch([
-          `INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, department_id, team_id, manager_id, employment_status, joined_date, created_at) VALUES (${created.id}, 'SU-001', 'Super', 'User', '+49 30 555-0100', 'Super Administrator', 1, 1, ${created.id}, 'FULL_TIME', '2025-01-01', '${now}');`
+          `INSERT INTO users (email, password_hash, role, status, created_at, updated_at) VALUES ('${acc.email}', '${passwordHash}', '${acc.role}', 'ACTIVE', '${now}', '${now}');`
         ]);
+        const created = await queryOne("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", [acc.email]);
+        userId = created?.id;
+      }
+      if (userId) {
+        const empExisting = await queryOne("SELECT id FROM employees WHERE user_id = ? OR LOWER(employee_code) = LOWER(?)", [userId, acc.code]);
+        if (!empExisting) {
+          await executeBatch([
+            `INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, department_id, team_id, manager_id, employment_status, joined_date, created_at) VALUES (${userId}, '${acc.code}', '${acc.firstName}', '${acc.lastName}', '${acc.phone}', '${acc.jobTitle}', 1, 1, ${userId}, 'FULL_TIME', '2025-01-15', '${now}');`
+          ]);
+        }
       }
     }
   } catch (e) {
-    console.error("Failed to ensure superuser:", e);
+    console.error("Failed to ensure core accounts:", e);
   }
-  await clearAllMockData();
 }
 async function clearAllMockData() {
   const tables = [

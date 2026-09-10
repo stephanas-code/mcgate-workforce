@@ -263,42 +263,75 @@ export async function initDatabase(): Promise<void> {
     await seedInitialData();
   }
 
-  // Remove all demo accounts (Marcus Vance, Elena Rostova, David Chen, John Doe), leaving ONLY the Super Admin
+  // Remove legacy mockup demo accounts (Marcus Vance, Elena Rostova, David Chen, John Doe)
   try {
     await executeBatch([
       "DELETE FROM employees WHERE first_name IN ('Marcus', 'Elena', 'David', 'John') AND last_name IN ('Vance', 'Rostova', 'Chen', 'Doe');",
-      "DELETE FROM users WHERE email IN ('admin@mcgate.tech', 'hr@mcgate.tech', 'lead.eng@mcgate.tech', 'john.doe@mcgate.tech');",
-      "DELETE FROM users WHERE role != 'SUPER_ADMIN';",
-      "DELETE FROM employees WHERE user_id NOT IN (SELECT id FROM users);"
+      "DELETE FROM users WHERE email IN ('admin@mcgate.tech', 'hr@mcgate.tech', 'lead.eng@mcgate.tech', 'john.doe@mcgate.tech');"
     ]);
   } catch (e) {
-    console.error('Failed to clean demo accounts:', e);
+    console.error('Failed to clean legacy demo accounts:', e);
   }
 
-  // Ensure the Super User account exists
+  // Ensure core administrative & colleague accounts exist
   try {
-    const superUser = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
-    if (!superUser) {
-      const defaultPassword = 'password123';
-      const salt = bcrypt.genSaltSync(10);
-      const passwordHash = bcrypt.hashSync(defaultPassword, salt);
-      const now = new Date().toISOString();
-      await executeBatch([
-        `INSERT INTO users (email, password_hash, role, status, created_at, updated_at) VALUES ('superuser@mcgate.tech', '${passwordHash}', 'SUPER_ADMIN', 'ACTIVE', '${now}', '${now}');`
-      ]);
-      const created = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
-      if (created) {
+    const defaultPassword = 'password123';
+    const salt = bcrypt.genSaltSync(10);
+    const passwordHash = bcrypt.hashSync(defaultPassword, salt);
+    const now = new Date().toISOString();
+
+    const coreAccounts = [
+      {
+        email: 'superuser@mcgate.tech',
+        role: 'SUPER_ADMIN',
+        code: 'SU-001',
+        firstName: 'Super',
+        lastName: 'User',
+        jobTitle: 'Super Administrator',
+        phone: '+49 30 555-0100'
+      },
+      {
+        email: 'stephenosanebi@gmail.com',
+        role: 'SUPER_ADMIN',
+        code: 'MGT-000',
+        firstName: 'Stephen',
+        lastName: 'Osanebi',
+        jobTitle: 'Principal Super Admin',
+        phone: '+49 30 555-0199'
+      },
+      {
+        email: 'meshack.ossai@mcgatetechnologies.com',
+        role: 'EMPLOYEE',
+        code: 'MGT-002',
+        firstName: 'Meshack',
+        lastName: 'Ossai',
+        jobTitle: 'Team Member',
+        phone: '+234 800 000 0000'
+      }
+    ];
+
+    for (const acc of coreAccounts) {
+      const existing = await queryOne<{ id: number }>("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", [acc.email]);
+      let userId = existing?.id;
+      if (!userId) {
         await executeBatch([
-          `INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, department_id, team_id, manager_id, employment_status, joined_date, created_at) VALUES (${created.id}, 'SU-001', 'Super', 'User', '+49 30 555-0100', 'Super Administrator', 1, 1, ${created.id}, 'FULL_TIME', '2025-01-01', '${now}');`
+          `INSERT INTO users (email, password_hash, role, status, created_at, updated_at) VALUES ('${acc.email}', '${passwordHash}', '${acc.role}', 'ACTIVE', '${now}', '${now}');`
         ]);
+        const created = await queryOne<{ id: number }>("SELECT id FROM users WHERE LOWER(email) = LOWER(?)", [acc.email]);
+        userId = created?.id;
+      }
+      if (userId) {
+        const empExisting = await queryOne<{ id: number }>("SELECT id FROM employees WHERE user_id = ? OR LOWER(employee_code) = LOWER(?)", [userId, acc.code]);
+        if (!empExisting) {
+          await executeBatch([
+            `INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, department_id, team_id, manager_id, employment_status, joined_date, created_at) VALUES (${userId}, '${acc.code}', '${acc.firstName}', '${acc.lastName}', '${acc.phone}', '${acc.jobTitle}', 1, 1, ${userId}, 'FULL_TIME', '2025-01-15', '${now}');`
+          ]);
+        }
       }
     }
   } catch (e) {
-    console.error('Failed to ensure superuser:', e);
+    console.error('Failed to ensure core accounts:', e);
   }
-
-  // Clear all mockup operational records so the system is clean, realtime, and deployment ready
-  await clearAllMockData();
 }
 
 export async function clearAllMockData(): Promise<void> {

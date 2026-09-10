@@ -28,7 +28,23 @@ const DATA_DIR = process.env.DESKTOP_USER_DATA
   ? path.join(os.tmpdir(), 'mcgate-data')
   : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'mcgate.sqlite');
-const SEED_DB_FILE = path.join(process.cwd(), 'data', 'mcgate.sqlite');
+
+function findSeedDbFile(): string | null {
+  const candidates = [
+    path.join(process.cwd(), 'data', 'mcgate.sqlite'),
+    path.join(CURRENT_DIR, 'data', 'mcgate.sqlite'),
+    path.join(CURRENT_DIR, '..', 'data', 'mcgate.sqlite'),
+    path.join(CURRENT_DIR, 'mcgate.sqlite')
+  ];
+  for (const c of candidates) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch {
+      // ignore
+    }
+  }
+  return null;
+}
 
 let isSaving = false;
 let saveScheduled = false;
@@ -104,12 +120,13 @@ export async function getDb(): Promise<Database> {
   });
 
   // On Vercel, copy initial seed DB from repo if it exists and /tmp doesn't have it yet
-  if (IS_VERCEL && !fs.existsSync(DB_FILE) && fs.existsSync(SEED_DB_FILE)) {
+  const seedFile = findSeedDbFile();
+  if (IS_VERCEL && !fs.existsSync(DB_FILE) && seedFile) {
     try {
       if (!fs.existsSync(DATA_DIR)) {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
-      fs.copyFileSync(SEED_DB_FILE, DB_FILE);
+      fs.copyFileSync(seedFile, DB_FILE);
     } catch (err) {
       console.warn('[DB] Failed copying seed DB to /tmp:', err);
     }
@@ -123,9 +140,9 @@ export async function getDb(): Promise<Database> {
       console.warn('Could not read existing DB file, creating fresh DB:', e);
       dbInstance = new SQL.Database();
     }
-  } else if (fs.existsSync(SEED_DB_FILE)) {
+  } else if (seedFile) {
     try {
-      const fileBuffer = fs.readFileSync(SEED_DB_FILE);
+      const fileBuffer = fs.readFileSync(seedFile);
       dbInstance = new SQL.Database(fileBuffer);
     } catch (e) {
       console.warn('Could not read seed DB file, creating fresh DB:', e);
