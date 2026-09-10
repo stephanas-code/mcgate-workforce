@@ -30,7 +30,7 @@ app.use((_req, res, next) => {
 
 // Cold-start database initialization - MUST run before route handlers
 let dbInitPromise: Promise<void> | null = null;
-app.use(async (_req, _res, next) => {
+app.use(async (_req, res, next) => {
   try {
     if (!dbInitPromise) {
       dbInitPromise = initDatabase().catch((err) => {
@@ -41,9 +41,12 @@ app.use(async (_req, _res, next) => {
     }
     await dbInitPromise;
     next();
-  } catch (err) {
+  } catch (err: any) {
     console.error('[Vercel DB Init Middleware Failed]:', err);
-    next(err);
+    res.status(500).json({
+      error: 'Database initialization failed on cold start',
+      message: err?.message || String(err)
+    });
   }
 });
 

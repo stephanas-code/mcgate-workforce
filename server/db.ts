@@ -43,7 +43,9 @@ export function persistDatabase(): void {
   }
 }
 
-function getWasmBinary(): Buffer | undefined {
+import { SQL_WASM_BASE64 } from './wasmBinary.ts';
+
+function getWasmBinary(): Buffer {
   const possiblePaths = [
     path.join(__dirname, 'sql-wasm.wasm'),
     path.join(__dirname, '..', 'api', 'sql-wasm.wasm'),
@@ -61,7 +63,8 @@ function getWasmBinary(): Buffer | undefined {
       // ignore
     }
   }
-  return undefined;
+  // Serverless resilient fallback: Use pre-embedded wasm binary
+  return Buffer.from(SQL_WASM_BASE64, 'base64');
 }
 
 export async function getDb(): Promise<Database> {
