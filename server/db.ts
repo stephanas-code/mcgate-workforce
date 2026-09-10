@@ -22,7 +22,9 @@ const CURRENT_DIR = getCurrentDir();
 
 let dbInstance: Database | null = null;
 const IS_VERCEL = Boolean(process.env.VERCEL);
-const DATA_DIR = IS_VERCEL
+const DATA_DIR = process.env.DESKTOP_USER_DATA
+  ? path.join(process.env.DESKTOP_USER_DATA, 'data')
+  : IS_VERCEL
   ? path.join(os.tmpdir(), 'mcgate-data')
   : path.join(process.cwd(), 'data');
 const DB_FILE = path.join(DATA_DIR, 'mcgate.sqlite');

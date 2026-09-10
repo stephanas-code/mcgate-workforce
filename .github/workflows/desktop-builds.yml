@@ -1,0 +1,106 @@
+name: Build Desktop Packages (.exe & .rpm)
+
+on:
+  push:
+    branches: [ main ]
+    tags: [ 'v*' ]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-windows:
+    name: Build Windows Executable (.exe)
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile application bundles
+        run: npm run build
+
+      - name: Build Windows Installer & Portable (.exe)
+        run: npx electron-builder --win nsis portable
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Windows Executable Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-installer-exe
+          path: |
+            release/*.exe
+            release/*.blockmap
+          retention-days: 14
+
+  build-linux:
+    name: Build Linux Package (.rpm & .AppImage)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+          cache: 'npm'
+
+      - name: Install Linux packaging tools (rpm-build)
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y rpm
+
+      - name: Install dependencies
+        run: npm install
+
+      - name: Compile application bundles
+        run: npm run build
+
+      - name: Build Linux RPM & AppImage (.rpm)
+        run: npx electron-builder --linux rpm AppImage
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Upload Linux RPM Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: linux-rpm-package
+          path: |
+            release/*.rpm
+            release/*.AppImage
+          retention-days: 14
+
+  release:
+    name: Publish GitHub Release with .exe & .rpm
+    needs: [build-windows, build-linux]
+    if: startsWith(github.ref, 'refs/tags/')
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all build artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-artifacts
+
+      - name: Publish Release Assets
+        uses: softprops/action-gh-release@v2
+        with:
+          files: |
+            all-artifacts/windows-installer-exe/*.exe
+            all-artifacts/linux-rpm-package/*.rpm
+            all-artifacts/linux-rpm-package/*.AppImage
+          draft: false
+          prerelease: false
+          generate_release_notes: true
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}

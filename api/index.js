@@ -31,7 +31,7 @@ function getCurrentDir() {
 var CURRENT_DIR = getCurrentDir();
 var dbInstance = null;
 var IS_VERCEL = Boolean(process.env.VERCEL);
-var DATA_DIR = IS_VERCEL ? path.join(os.tmpdir(), "mcgate-data") : path.join(process.cwd(), "data");
+var DATA_DIR = process.env.DESKTOP_USER_DATA ? path.join(process.env.DESKTOP_USER_DATA, "data") : IS_VERCEL ? path.join(os.tmpdir(), "mcgate-data") : path.join(process.cwd(), "data");
 var DB_FILE = path.join(DATA_DIR, "mcgate.sqlite");
 var SEED_DB_FILE = path.join(process.cwd(), "data", "mcgate.sqlite");
 var isSaving = false;
