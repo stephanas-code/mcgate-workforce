@@ -273,6 +273,11 @@ export const api = {
   getEmployees: () => request<any[]>('/api/employees'),
   getNextEmployeeCode: () => request<{ code: string }>('/api/employees/next-code'),
   createEmployee: (data: any) => request<any>('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
+  resetEmployeePassword: (employeeId: number, newPassword?: string) =>
+    request<{ success: boolean; message: string }>(`/api/employees/${employeeId}/reset-password`, {
+      method: 'POST',
+      body: JSON.stringify({ newPassword: newPassword || 'password123' })
+    }),
 
   // Reports
   getAttendanceReport: (from?: string, to?: string) => {

@@ -14,7 +14,8 @@ import {
   Upload,
   Search,
   Phone,
-  RefreshCw
+  RefreshCw,
+  Key
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -55,6 +56,8 @@ export const TeamsView: React.FC = () => {
   const [modalError, setModalError] = useState<string | null>(null);
   const [onboardSuccessMessage, setOnboardSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [resettingId, setResettingId] = useState<number | null>(null);
+  const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
   const newEmpPhotoRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role || 'SUPER_ADMIN';
@@ -97,6 +100,28 @@ export const TeamsView: React.FC = () => {
   useEffect(() => {
     loadData();
   }, []);
+
+  const handleResetPassword = async (emp: any) => {
+    if (!window.confirm(`Reset login password for ${emp.first_name} ${emp.last_name} (${emp.email}) to "password123"?`)) {
+      return;
+    }
+    setResettingId(emp.id);
+    setActionBanner(null);
+    try {
+      await api.resetEmployeePassword(emp.id, 'password123');
+      setActionBanner({
+        type: 'success',
+        message: `Password reset successfully for ${emp.first_name} ${emp.last_name} (${emp.employee_code || emp.email}). The new password is "password123".`
+      });
+    } catch (err: any) {
+      setActionBanner({
+        type: 'error',
+        message: err?.message || 'Failed to reset password.'
+      });
+    } finally {
+      setResettingId(null);
+    }
+  };
 
   // Process photo to base64 with canvas compression
   const processImage = (file: File, callback: (dataUrl: string) => void, onError: (err: string) => void) => {
@@ -275,6 +300,29 @@ export const TeamsView: React.FC = () => {
         )}
       </div>
 
+      {actionBanner && (
+        <div className={`p-4 rounded-xl text-xs font-semibold flex items-center justify-between shadow-xs border ${
+          actionBanner.type === 'success'
+            ? 'bg-emerald-50 text-emerald-800 border-emerald-200'
+            : 'bg-rose-50 text-rose-800 border-rose-200'
+        }`}>
+          <div className="flex items-center gap-2">
+            {actionBanner.type === 'success' ? (
+              <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+            ) : (
+              <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
+            )}
+            <span>{actionBanner.message}</span>
+          </div>
+          <button
+            onClick={() => setActionBanner(null)}
+            className="p-1 hover:bg-slate-200/50 rounded-lg text-slate-500 hover:text-slate-800 cursor-pointer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
+
 
       {/* Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-100 pb-3">
@@ -335,7 +383,7 @@ export const TeamsView: React.FC = () => {
                   <th className="px-4 py-3.5">Squad</th>
                   <th className="px-4 py-3.5">Security Level</th>
                   <th className="px-4 py-3.5">Attendance</th>
-                  <th className="px-4 py-3.5 text-right">Photo Action</th>
+                  <th className="px-4 py-3.5 text-right">Actions</th>
                 </tr>
               </thead>
               <tbody className="divide-y divide-indigo-50/80 text-slate-700 font-medium">
@@ -418,14 +466,27 @@ export const TeamsView: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <button
-                            onClick={() => handleOpenPhotoModal(e)}
-                            className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1 ml-auto cursor-pointer"
-                            title="Upload or change teammate profile picture"
-                          >
-                            <Camera className="w-3.5 h-3.5" />
-                            <span>{e.avatarUrl ? 'Change' : 'Upload Pic'}</span>
-                          </button>
+                          <div className="flex items-center justify-end gap-2">
+                            <button
+                              onClick={() => handleOpenPhotoModal(e)}
+                              className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
+                              title="Upload or change teammate profile picture"
+                            >
+                              <Camera className="w-3.5 h-3.5" />
+                              <span>{e.avatarUrl ? 'Pic' : 'Upload'}</span>
+                            </button>
+                            {isAdmin && (
+                              <button
+                                onClick={() => handleResetPassword(e)}
+                                disabled={resettingId === e.id}
+                                className="px-2.5 py-1.5 rounded-lg bg-amber-50 hover:bg-amber-100 text-amber-800 border border-amber-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="Reset teammate password to password123"
+                              >
+                                <Key className="w-3.5 h-3.5 text-amber-600" />
+                                <span>{resettingId === e.id ? 'Resetting...' : 'Reset Pwd'}</span>
+                              </button>
+                            )}
+                          </div>
                         </td>
                       </tr>
                     ))

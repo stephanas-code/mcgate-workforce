@@ -3122,6 +3122,39 @@ router6.post("/employees", authenticateToken, requireRoles("SUPER_ADMIN", "ADMIN
     res.status(500).json({ error: err.message || "Failed to create employee." });
   }
 });
+router6.post("/employees/:id/reset-password", authenticateToken, requireRoles("SUPER_ADMIN", "ADMIN"), async (req, res) => {
+  try {
+    const employeeId = Number(req.params.id);
+    const { newPassword = "password123" } = req.body;
+    const emp = await queryOne(
+      "SELECT id, user_id, first_name, last_name FROM employees WHERE id = ?",
+      [employeeId]
+    );
+    if (!emp) {
+      return res.status(404).json({ error: "Employee not found." });
+    }
+    const cleanPassword = String(newPassword).trim() || "password123";
+    const passwordHash = bcrypt2.hashSync(cleanPassword, 10);
+    const now = (/* @__PURE__ */ new Date()).toISOString();
+    await execute("UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?", [passwordHash, now, emp.user_id]);
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.fullName || req.user.email,
+      userRole: req.user.role,
+      action: "USER_PASSWORD_RESET",
+      resource: "EMPLOYEE",
+      resourceId: employeeId,
+      ipAddress: req.ip,
+      afterValue: `Reset password for ${emp.first_name} ${emp.last_name}`
+    });
+    res.json({
+      success: true,
+      message: `Password for ${emp.first_name} ${emp.last_name} has been reset to: ${cleanPassword}`
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to reset teammate password." });
+  }
+});
 var teamRoutes_default = router6;
 
 // server/routes/reportRoutes.ts
