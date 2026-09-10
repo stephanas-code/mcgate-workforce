@@ -1,16 +1,16 @@
 import express from 'express';
-import authRoutes from '../server/routes/authRoutes.ts';
-import attendanceRoutes from '../server/routes/attendanceRoutes.ts';
-import taskRoutes from '../server/routes/taskRoutes.ts';
-import assignmentRoutes from '../server/routes/assignmentRoutes.ts';
-import projectRoutes from '../server/routes/projectRoutes.ts';
-import teamRoutes from '../server/routes/teamRoutes.ts';
-import reportRoutes from '../server/routes/reportRoutes.ts';
-import auditRoutes from '../server/routes/auditRoutes.ts';
-import notificationRoutes from '../server/routes/notificationRoutes.ts';
-import settingRoutes from '../server/routes/settingRoutes.ts';
-import searchRoutes from '../server/routes/searchRoutes.ts';
-import { initDatabase } from '../server/schema.ts';
+import authRoutes from './routes/authRoutes.ts';
+import attendanceRoutes from './routes/attendanceRoutes.ts';
+import taskRoutes from './routes/taskRoutes.ts';
+import assignmentRoutes from './routes/assignmentRoutes.ts';
+import projectRoutes from './routes/projectRoutes.ts';
+import teamRoutes from './routes/teamRoutes.ts';
+import reportRoutes from './routes/reportRoutes.ts';
+import auditRoutes from './routes/auditRoutes.ts';
+import notificationRoutes from './routes/notificationRoutes.ts';
+import settingRoutes from './routes/settingRoutes.ts';
+import searchRoutes from './routes/searchRoutes.ts';
+import { initDatabase } from './schema.ts';
 
 const app = express();
 

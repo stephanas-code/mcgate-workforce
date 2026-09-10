@@ -3,6 +3,7 @@ import type { Database, SqlValue } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'url';
 function getCurrentDir(): string {
   try {
     if (typeof __dirname !== 'undefined' && __dirname) {
