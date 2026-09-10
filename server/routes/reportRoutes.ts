@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { queryOne, queryAll } from '../db.ts';
-import { authenticateToken, requireRoles, AuthRequest } from '../auth.ts';
+import { authenticateToken, requireRoles, type AuthRequest } from '../auth.ts';
 
 const router = Router();
 

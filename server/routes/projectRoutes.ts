@@ -2,7 +2,7 @@ import { Router } from 'express';
 import path from 'path';
 import zlib from 'zlib';
 import { queryOne, queryAll, execute } from '../db.ts';
-import { authenticateToken, AuthRequest } from '../auth.ts';
+import { authenticateToken, type AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
 import { createNotification } from '../notifications.ts';
 import { calculateMilestoneMetrics } from '../milestones.ts';

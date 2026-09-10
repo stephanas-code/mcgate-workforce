@@ -1,6 +1,6 @@
 import { Router } from 'express';
 import { queryOne, queryAll, execute } from '../db.ts';
-import { authenticateToken, requireRoles, AuthRequest } from '../auth.ts';
+import { authenticateToken, requireRoles, type AuthRequest } from '../auth.ts';
 import { createNotification } from '../notifications.ts';
 import { logAudit } from '../audit.ts';
 import { syncMilestoneStageAndProgress } from '../milestones.ts';

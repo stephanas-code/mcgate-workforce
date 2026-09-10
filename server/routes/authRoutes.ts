@@ -1,7 +1,7 @@
 import { Router } from 'express';
 import bcrypt from 'bcryptjs';
 import { queryOne, queryAll, execute } from '../db.ts';
-import { signToken, authenticateToken, getUserProfileById, AuthRequest } from '../auth.ts';
+import { signToken, authenticateToken, getUserProfileById, type AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
 
 const router = Router();

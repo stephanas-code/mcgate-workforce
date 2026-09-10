@@ -1,4 +1,5 @@
-import initSqlJs, { Database, SqlValue } from 'sql.js';
+import initSqlJs from 'sql.js';
+import type { Database, SqlValue } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
