@@ -2,6 +2,10 @@ import initSqlJs, { Database, SqlValue } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
+import { fileURLToPath } from 'url';
+
+const __filename = fileURLToPath(import.meta.url);
+const __dirname = path.dirname(__filename);
 
 let dbInstance: Database | null = null;
 const IS_VERCEL = Boolean(process.env.VERCEL);
