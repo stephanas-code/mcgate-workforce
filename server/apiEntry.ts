@@ -10,6 +10,7 @@ import auditRoutes from './routes/auditRoutes.ts';
 import notificationRoutes from './routes/notificationRoutes.ts';
 import settingRoutes from './routes/settingRoutes.ts';
 import searchRoutes from './routes/searchRoutes.ts';
+import systemRoutes from './routes/systemRoutes.ts';
 import { initDatabase } from './schema.ts';
 
 const app = express();
@@ -78,6 +79,7 @@ apiRouter.use('/audit-logs', auditRoutes);
 apiRouter.use('/notifications', notificationRoutes);
 apiRouter.use('/settings', settingRoutes);
 apiRouter.use('/search', searchRoutes);
+apiRouter.use('/system', systemRoutes);
 
 // Mount router at both /api and root to handle any Vercel URL rewrite behavior
 app.use('/api', apiRouter);

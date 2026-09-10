@@ -307,6 +307,15 @@ export async function initDatabase(): Promise<void> {
         lastName: 'Ossai',
         jobTitle: 'Team Member',
         phone: '+234 800 000 0000'
+      },
+      {
+        email: 'stephanas.odogu@miva.edu.ng',
+        role: 'EMPLOYEE',
+        code: 'MGT-004',
+        firstName: 'Stephanas',
+        lastName: 'Odogu',
+        jobTitle: 'Team Member',
+        phone: '+234 800 000 0001'
       }
     ];
 

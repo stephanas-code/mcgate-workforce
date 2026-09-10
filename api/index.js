@@ -48,6 +48,85 @@ function findSeedDbFile() {
   }
   return null;
 }
+var CONTAINER_ID = `cntr-${Math.random().toString(36).substring(2, 8)}-${Date.now().toString(36)}`;
+var CONTAINER_BOOT_TIME = (/* @__PURE__ */ new Date()).toISOString();
+var dbLogs = [];
+var logCounter = 1;
+function addDbLog(entry) {
+  const fullEntry = {
+    id: logCounter++,
+    timestamp: (/* @__PURE__ */ new Date()).toISOString(),
+    containerId: CONTAINER_ID,
+    ...entry
+  };
+  dbLogs.unshift(fullEntry);
+  if (dbLogs.length > 200) {
+    dbLogs.pop();
+  }
+}
+function getDbLogs() {
+  let dbFileSize = 0;
+  try {
+    if (fs.existsSync(DB_FILE)) {
+      dbFileSize = fs.statSync(DB_FILE).size;
+    }
+  } catch {
+  }
+  return {
+    containerId: CONTAINER_ID,
+    bootTime: CONTAINER_BOOT_TIME,
+    isVercel: IS_VERCEL,
+    dataDir: DATA_DIR,
+    dbFile: DB_FILE,
+    dbFileExists: fs.existsSync(DB_FILE),
+    dbFileSize,
+    blobConfigured: Boolean(process.env.BLOB_READ_WRITE_TOKEN),
+    logs: dbLogs
+  };
+}
+async function tryDownloadBlobDb() {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return null;
+  try {
+    const { head } = await import("@vercel/blob");
+    const blobDetails = await head("mcgate-db/mcgate.sqlite").catch(() => null);
+    if (blobDetails?.downloadUrl) {
+      const resp = await fetch(blobDetails.downloadUrl);
+      if (resp.ok) {
+        const arrBuf = await resp.arrayBuffer();
+        addDbLog({
+          type: "INIT",
+          details: `Synchronized DB from Vercel Blob: ${arrBuf.byteLength} bytes`
+        });
+        return Buffer.from(arrBuf);
+      }
+    }
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      error: `Failed to download from Vercel Blob: ${err?.message || String(err)}`
+    });
+  }
+  return null;
+}
+async function tryUploadBlobDb(buffer) {
+  if (!process.env.BLOB_READ_WRITE_TOKEN) return;
+  try {
+    const { put: put2 } = await import("@vercel/blob");
+    await put2("mcgate-db/mcgate.sqlite", buffer, {
+      access: "public",
+      addRandomSuffix: false
+    });
+    addDbLog({
+      type: "PERSIST",
+      details: `Persisted DB to Vercel Blob: ${buffer.length} bytes`
+    });
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      error: `Failed to upload to Vercel Blob: ${err?.message || String(err)}`
+    });
+  }
+}
 var isSaving = false;
 var saveScheduled = false;
 function persistDatabase() {
@@ -64,8 +143,19 @@ function persistDatabase() {
     const data = dbInstance.export();
     const buffer = Buffer.from(data);
     fs.writeFileSync(DB_FILE, buffer);
+    addDbLog({
+      type: "PERSIST",
+      details: { bytes: buffer.length, path: DB_FILE }
+    });
+    if (IS_VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
+      tryUploadBlobDb(buffer).catch(console.error);
+    }
   } catch (err) {
     console.warn("[DB] Warning: Failed to persist database to disk:", err);
+    addDbLog({
+      type: "ERROR",
+      error: `Persist failed: ${err?.message || String(err)}`
+    });
   } finally {
     isSaving = false;
     if (saveScheduled) {
@@ -112,6 +202,18 @@ async function getDb() {
       return file;
     }
   });
+  if (IS_VERCEL && process.env.BLOB_READ_WRITE_TOKEN) {
+    const blobBuffer = await tryDownloadBlobDb();
+    if (blobBuffer) {
+      try {
+        dbInstance = new SQL.Database(blobBuffer);
+        dbInstance.run("PRAGMA foreign_keys = ON;");
+        return dbInstance;
+      } catch (err) {
+        console.warn("Failed loading blob DB into SQL.js, falling back to disk/seed:", err);
+      }
+    }
+  }
   const seedFile = findSeedDbFile();
   if (IS_VERCEL && !fs.existsSync(DB_FILE) && seedFile) {
     try {
@@ -119,75 +221,152 @@ async function getDb() {
         fs.mkdirSync(DATA_DIR, { recursive: true });
       }
       fs.copyFileSync(seedFile, DB_FILE);
+      addDbLog({
+        type: "INIT",
+        details: `Copied seed DB from ${seedFile} to ${DB_FILE}`
+      });
     } catch (err) {
       console.warn("[DB] Failed copying seed DB to /tmp:", err);
+      addDbLog({
+        type: "ERROR",
+        error: `Failed copying seed DB to /tmp: ${err}`
+      });
     }
   }
   if (fs.existsSync(DB_FILE)) {
     try {
       const fileBuffer = fs.readFileSync(DB_FILE);
       dbInstance = new SQL.Database(fileBuffer);
+      addDbLog({
+        type: "INIT",
+        details: `Loaded database from disk: ${DB_FILE} (${fileBuffer.length} bytes)`
+      });
     } catch (e) {
       console.warn("Could not read existing DB file, creating fresh DB:", e);
       dbInstance = new SQL.Database();
+      addDbLog({
+        type: "ERROR",
+        error: `Could not read existing DB file: ${e}`
+      });
     }
   } else if (seedFile) {
     try {
       const fileBuffer = fs.readFileSync(seedFile);
       dbInstance = new SQL.Database(fileBuffer);
+      addDbLog({
+        type: "INIT",
+        details: `Loaded database directly from seed file: ${seedFile} (${fileBuffer.length} bytes)`
+      });
     } catch (e) {
       console.warn("Could not read seed DB file, creating fresh DB:", e);
       dbInstance = new SQL.Database();
+      addDbLog({
+        type: "ERROR",
+        error: `Could not read seed DB file: ${e}`
+      });
     }
   } else {
     dbInstance = new SQL.Database();
+    addDbLog({
+      type: "INIT",
+      details: "Initialized completely fresh in-memory database"
+    });
   }
   dbInstance.run("PRAGMA foreign_keys = ON;");
   return dbInstance;
 }
 async function queryAll(sql, params = []) {
-  const db = await getDb();
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  const results = [];
-  while (stmt.step()) {
-    results.push(stmt.getAsObject());
+  try {
+    const db = await getDb();
+    const stmt = db.prepare(sql);
+    stmt.bind(params);
+    const results = [];
+    while (stmt.step()) {
+      results.push(stmt.getAsObject());
+    }
+    stmt.free();
+    return results;
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      sql: sql.substring(0, 200),
+      params,
+      error: err?.message || String(err)
+    });
+    throw err;
   }
-  stmt.free();
-  return results;
 }
 async function queryOne(sql, params = []) {
-  const db = await getDb();
-  const stmt = db.prepare(sql);
-  stmt.bind(params);
-  let result = null;
-  if (stmt.step()) {
-    result = stmt.getAsObject();
+  try {
+    const db = await getDb();
+    const stmt = db.prepare(sql);
+    stmt.bind(params);
+    let result = null;
+    if (stmt.step()) {
+      result = stmt.getAsObject();
+    }
+    stmt.free();
+    return result;
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      sql: sql.substring(0, 200),
+      params,
+      error: err?.message || String(err)
+    });
+    throw err;
   }
-  stmt.free();
-  return result;
 }
 async function execute(sql, params = []) {
-  const db = await getDb();
-  db.run(sql, params);
-  const info = db.exec("SELECT changes() as changes, last_insert_rowid() as id");
-  let changes = 0;
-  let lastInsertRowid = 0;
-  if (info.length > 0 && info[0].values.length > 0) {
-    changes = Number(info[0].values[0][0]) || 0;
-    lastInsertRowid = Number(info[0].values[0][1]) || 0;
+  try {
+    const db = await getDb();
+    db.run(sql, params);
+    const info = db.exec("SELECT changes() as changes, last_insert_rowid() as id");
+    let changes = 0;
+    let lastInsertRowid = 0;
+    if (info.length > 0 && info[0].values.length > 0) {
+      changes = Number(info[0].values[0][0]) || 0;
+      lastInsertRowid = Number(info[0].values[0][1]) || 0;
+    }
+    persistDatabase();
+    addDbLog({
+      type: "EXECUTE",
+      sql: sql.substring(0, 200),
+      params,
+      changes,
+      lastInsertRowid
+    });
+    return { changes, lastInsertRowid };
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      sql: sql.substring(0, 200),
+      params,
+      error: err?.message || String(err)
+    });
+    throw err;
   }
-  persistDatabase();
-  return { changes, lastInsertRowid };
 }
 async function executeBatch(statements) {
-  const db = await getDb();
-  for (const sql of statements) {
-    if (sql.trim()) {
-      db.run(sql);
+  try {
+    const db = await getDb();
+    for (const sql of statements) {
+      if (sql.trim()) {
+        db.run(sql);
+      }
     }
+    persistDatabase();
+    addDbLog({
+      type: "BATCH",
+      details: { count: statements.length }
+    });
+  } catch (err) {
+    addDbLog({
+      type: "ERROR",
+      error: `Batch execution failed: ${err?.message || String(err)}`
+    });
+    throw err;
   }
-  persistDatabase();
 }
 
 // server/auth.ts
@@ -3718,6 +3897,15 @@ async function initDatabase() {
         lastName: "Ossai",
         jobTitle: "Team Member",
         phone: "+234 800 000 0000"
+      },
+      {
+        email: "stephanas.odogu@miva.edu.ng",
+        role: "EMPLOYEE",
+        code: "MGT-004",
+        firstName: "Stephanas",
+        lastName: "Odogu",
+        jobTitle: "Team Member",
+        phone: "+234 800 000 0001"
       }
     ];
     for (const acc of coreAccounts) {
@@ -4012,6 +4200,47 @@ router11.get("/", authenticateToken, async (req, res) => {
 });
 var searchRoutes_default = router11;
 
+// server/routes/systemRoutes.ts
+import { Router as Router12 } from "express";
+var router12 = Router12();
+router12.get("/db-logs", authenticateToken, requireRoles("SUPER_ADMIN", "ADMIN"), async (_req, res) => {
+  try {
+    const dbInfo = getDbLogs();
+    const userCount = await queryOne("SELECT COUNT(*) as count FROM users").catch(() => ({ count: 0 }));
+    const employeeCount = await queryOne("SELECT COUNT(*) as count FROM employees").catch(() => ({ count: 0 }));
+    const recentEmployees = await queryAll(`
+      SELECT e.id, e.employee_code, e.first_name, e.last_name, u.email
+      FROM employees e
+      JOIN users u ON u.id = e.user_id
+      ORDER BY e.id DESC
+      LIMIT 10
+    `).catch(() => []);
+    res.json({
+      success: true,
+      container: {
+        id: dbInfo.containerId,
+        bootTime: dbInfo.bootTime,
+        isVercel: dbInfo.isVercel,
+        blobConfigured: dbInfo.blobConfigured
+      },
+      storage: {
+        engine: "SQL.js (WebAssembly SQLite)",
+        dataDir: dbInfo.dataDir,
+        dbFile: dbInfo.dbFile,
+        existsOnDisk: dbInfo.dbFileExists,
+        sizeBytes: dbInfo.dbFileSize,
+        totalUsers: userCount?.count || 0,
+        totalEmployees: employeeCount?.count || 0
+      },
+      recentEmployees,
+      recentOperations: dbInfo.logs
+    });
+  } catch (err) {
+    res.status(500).json({ error: "Failed to retrieve database logs", message: err?.message });
+  }
+});
+var systemRoutes_default = router12;
+
 // server/apiEntry.ts
 var app = express();
 app.disable("x-powered-by");
@@ -4068,6 +4297,7 @@ apiRouter.use("/audit-logs", auditRoutes_default);
 apiRouter.use("/notifications", notificationRoutes_default);
 apiRouter.use("/settings", settingRoutes_default);
 apiRouter.use("/search", searchRoutes_default);
+apiRouter.use("/system", systemRoutes_default);
 app.use("/api", apiRouter);
 app.use("/", apiRouter);
 app.use((err, _req, res, _next) => {

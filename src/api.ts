@@ -278,6 +278,7 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ newPassword: newPassword || 'password123' })
     }),
+  getDbLogs: () => request<any>('/api/system/db-logs'),
 
   // Reports
   getAttendanceReport: (from?: string, to?: string) => {

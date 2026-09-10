@@ -14,6 +14,7 @@ import auditRoutes from './server/routes/auditRoutes.ts';
 import notificationRoutes from './server/routes/notificationRoutes.ts';
 import settingRoutes from './server/routes/settingRoutes.ts';
 import searchRoutes from './server/routes/searchRoutes.ts';
+import systemRoutes from './server/routes/systemRoutes.ts';
 
 // Global error containment to guarantee high availability
 process.on('uncaughtException', (err) => {
@@ -85,6 +86,7 @@ async function startServer() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/settings', settingRoutes);
   app.use('/api/search', searchRoutes);
+  app.use('/api/system', systemRoutes);
 
   // Global safe error handling middleware (Never leak stack traces in production)
   app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {

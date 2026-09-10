@@ -15,7 +15,9 @@ import {
   Search,
   Phone,
   RefreshCw,
-  Key
+  Key,
+  Database,
+  Activity
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -58,6 +60,9 @@ export const TeamsView: React.FC = () => {
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [resettingId, setResettingId] = useState<number | null>(null);
   const [actionBanner, setActionBanner] = useState<{ type: 'success' | 'error'; message: string } | null>(null);
+  const [isDbModalOpen, setIsDbModalOpen] = useState(false);
+  const [dbLogsData, setDbLogsData] = useState<any | null>(null);
+  const [isLoadingDbLogs, setIsLoadingDbLogs] = useState(false);
   const newEmpPhotoRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role || 'SUPER_ADMIN';
@@ -79,6 +84,37 @@ export const TeamsView: React.FC = () => {
     }
   };
 
+  const getCachedEmployees = (): any[] => {
+    try {
+      const stored = localStorage.getItem('mcgate_custom_employees');
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  };
+
+  const saveCachedEmployee = (emp: any) => {
+    try {
+      const existing = getCachedEmployees();
+      const updated = [emp, ...existing.filter((e: any) => e.email?.toLowerCase() !== emp.email?.toLowerCase())];
+      localStorage.setItem('mcgate_custom_employees', JSON.stringify(updated));
+    } catch {
+      // ignore
+    }
+  };
+
+  const fetchDbLogs = async () => {
+    setIsLoadingDbLogs(true);
+    try {
+      const res = await api.getDbLogs();
+      setDbLogsData(res);
+    } catch (err: any) {
+      console.error('Failed to fetch DB logs:', err);
+    } finally {
+      setIsLoadingDbLogs(false);
+    }
+  };
+
   const loadData = async () => {
     try {
       const [eList, dList, tList] = await Promise.all([
@@ -86,7 +122,14 @@ export const TeamsView: React.FC = () => {
         api.getDepartments(),
         api.getTeams()
       ]);
-      setEmployees(eList);
+      const cached = getCachedEmployees();
+      const mergedList = [...eList];
+      for (const c of cached) {
+        if (!mergedList.some(e => e.email?.toLowerCase() === c.email?.toLowerCase() || (e.id && e.id === c.id))) {
+          mergedList.unshift(c);
+        }
+      }
+      setEmployees(mergedList);
       setDepartments(dList);
       setTeams(tList);
       if (dList[0] && !newEmployee.departmentId) {
@@ -211,6 +254,31 @@ export const TeamsView: React.FC = () => {
       });
       setIsAddEmployeeModalOpen(false);
       const assignedCode = res.employeeCode || newEmployee.employeeCode || 'Assigned';
+      
+      const createdObj = {
+        id: res.employeeId || Date.now(),
+        user_id: res.userId || Date.now(),
+        employee_code: assignedCode,
+        first_name: newEmployee.firstName.trim(),
+        last_name: newEmployee.lastName.trim(),
+        fullName: `${newEmployee.firstName.trim()} ${newEmployee.lastName.trim()}`,
+        email: newEmployee.email.trim(),
+        job_title: newEmployee.jobTitle.trim() || 'Team Member',
+        role: newEmployee.role || 'EMPLOYEE',
+        status: 'ACTIVE',
+        phone: '',
+        department_id: newEmployee.departmentId ? Number(newEmployee.departmentId) : null,
+        team_id: newEmployee.teamId ? Number(newEmployee.teamId) : null,
+        department_name: departments.find(d => String(d.id) === String(newEmployee.departmentId))?.name || 'Enterprise',
+        team_name: teams.find(t => String(t.id) === String(newEmployee.teamId))?.name || 'Core Operations',
+        today_clock_in: null,
+        today_clock_out: null,
+        avatarUrl: newEmployee.avatarUrl || null
+      };
+
+      saveCachedEmployee(createdObj);
+      setEmployees(prev => [createdObj, ...prev.filter(e => e.email?.toLowerCase() !== createdObj.email.toLowerCase())]);
+
       setOnboardSuccessMessage(
         `Colleague ${newEmployee.firstName.trim()} ${newEmployee.lastName.trim()} onboarded successfully! Auto-assigned Employee Code: ${assignedCode}. They can now log in using either their Corporate Email (${newEmployee.email.trim()}) or Employee Code (${assignedCode}) with password: ${newEmployee.password || 'password123'}.`
       );
@@ -287,16 +355,29 @@ export const TeamsView: React.FC = () => {
         </div>
 
         {isAdmin && (
-          <button
-            onClick={() => {
-              fetchNextCode();
-              setIsAddEmployeeModalOpen(true);
-            }}
-            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition flex items-center gap-2 cursor-pointer shrink-0"
-          >
-            <Plus className="w-4 h-4" />
-            <span>Onboard Colleague</span>
-          </button>
+          <div className="flex items-center gap-2.5 shrink-0">
+            <button
+              onClick={() => {
+                fetchDbLogs();
+                setIsDbModalOpen(true);
+              }}
+              className="px-3 py-2.5 bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold rounded-xl border border-slate-300 transition flex items-center gap-1.5 cursor-pointer"
+              title="View database storage status, container ID, and live query logs"
+            >
+              <Database className="w-4 h-4 text-slate-600" />
+              <span>DB Logs & Storage</span>
+            </button>
+            <button
+              onClick={() => {
+                fetchNextCode();
+                setIsAddEmployeeModalOpen(true);
+              }}
+              className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition flex items-center gap-2 cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Onboard Colleague</span>
+            </button>
+          </div>
         )}
       </div>
 
@@ -901,6 +982,109 @@ export const TeamsView: React.FC = () => {
                 </button>
               </div>
             </form>
+          </div>
+        </Modal>
+
+        {/* Database & Storage Diagnostics Modal */}
+        <Modal
+          isOpen={isDbModalOpen}
+          onClose={() => setIsDbModalOpen(false)}
+          title="Database Storage & Activity Diagnostics"
+        >
+          <div className="space-y-4 max-h-[75vh] overflow-y-auto pr-1">
+            <div className="flex items-center justify-between bg-slate-50 p-3 rounded-xl border border-slate-200 text-xs">
+              <div>
+                <span className="text-slate-500 font-medium">Container ID: </span>
+                <span className="font-mono font-bold text-indigo-700">{dbLogsData?.container?.id || 'Loading...'}</span>
+              </div>
+              <button
+                onClick={fetchDbLogs}
+                disabled={isLoadingDbLogs}
+                className="px-2.5 py-1 bg-white hover:bg-slate-100 text-slate-700 text-xs font-bold rounded-lg border border-slate-300 transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isLoadingDbLogs ? 'animate-spin' : ''}`} />
+                <span>Refresh</span>
+              </button>
+            </div>
+
+            {/* Storage Architecture Overview */}
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <div className="p-3 bg-indigo-50/60 rounded-xl border border-indigo-100">
+                <div className="text-indigo-900 font-bold mb-1 flex items-center gap-1.5">
+                  <Database className="w-4 h-4 text-indigo-600" />
+                  <span>Engine & File Location</span>
+                </div>
+                <p className="text-slate-600 text-[11px] mb-1">
+                  Engine: <span className="font-semibold text-slate-800">{dbLogsData?.storage?.engine || 'SQL.js WebAssembly'}</span>
+                </p>
+                <p className="text-slate-600 text-[11px] font-mono truncate" title={dbLogsData?.storage?.dbFile}>
+                  File: {dbLogsData?.storage?.dbFile || 'mcgate.sqlite'}
+                </p>
+                <p className="text-slate-600 text-[11px]">
+                  Disk Size: <span className="font-semibold text-slate-800">{dbLogsData?.storage?.sizeBytes ? `${(dbLogsData.storage.sizeBytes / 1024).toFixed(1)} KB` : 'In-Memory'}</span>
+                </p>
+              </div>
+
+              <div className="p-3 bg-amber-50/60 rounded-xl border border-amber-200">
+                <div className="text-amber-900 font-bold mb-1 flex items-center gap-1.5">
+                  <Activity className="w-4 h-4 text-amber-700" />
+                  <span>Vercel Multi-Container Sync</span>
+                </div>
+                <p className="text-slate-600 text-[11px] mb-1">
+                  Blob Sync: <span className={`font-bold ${dbLogsData?.container?.blobConfigured ? 'text-emerald-700' : 'text-amber-800'}`}>
+                    {dbLogsData?.container?.blobConfigured ? 'CONNECTED' : 'LOCAL /TMP ONLY'}
+                  </span>
+                </p>
+                <p className="text-slate-500 text-[10px] leading-tight">
+                  {dbLogsData?.container?.blobConfigured
+                    ? 'All serverless instances automatically share state via Vercel Blob.'
+                    : 'Each Vercel Lambda container runs its own isolated /tmp instance. Connecting Vercel Blob links all instances.'}
+                </p>
+              </div>
+            </div>
+
+            {/* Counts */}
+            <div className="flex items-center gap-4 bg-slate-100 p-2.5 rounded-xl text-xs font-semibold text-slate-700">
+              <span>Total Users: <strong className="text-slate-900">{dbLogsData?.storage?.totalUsers ?? '...'}</strong></span>
+              <span>Total Employees: <strong className="text-slate-900">{dbLogsData?.storage?.totalEmployees ?? '...'}</strong></span>
+              <span>Platform: <strong className="text-indigo-700">{dbLogsData?.container?.isVercel ? 'Vercel Serverless' : 'Desktop / Node'}</strong></span>
+            </div>
+
+            {/* Recent DB Operations / Error Log */}
+            <div>
+              <h4 className="text-xs font-bold text-slate-800 uppercase tracking-wider mb-2 flex items-center gap-1.5">
+                <Activity className="w-3.5 h-3.5 text-indigo-600" />
+                <span>Recent Database Operations & Errors ({dbLogsData?.recentOperations?.length || 0})</span>
+              </h4>
+              <div className="max-h-60 overflow-y-auto rounded-xl border border-slate-200 bg-slate-900 text-slate-200 font-mono text-[11px] p-2.5 space-y-1.5">
+                {(!dbLogsData?.recentOperations || dbLogsData.recentOperations.length === 0) ? (
+                  <p className="text-slate-500 text-center py-4">No logged database operations yet in this container.</p>
+                ) : (
+                  dbLogsData.recentOperations.map((op: any) => (
+                    <div key={op.id} className="pb-1.5 border-b border-slate-800 last:border-b-0">
+                      <div className="flex items-center justify-between text-[10px] text-slate-400">
+                        <span className={`px-1.5 py-0.2 rounded font-bold uppercase ${
+                          op.type === 'ERROR' ? 'bg-rose-900/80 text-rose-300' :
+                          op.type === 'EXECUTE' ? 'bg-blue-900/80 text-blue-300' :
+                          op.type === 'PERSIST' ? 'bg-emerald-900/80 text-emerald-300' :
+                          'bg-slate-800 text-slate-300'
+                        }`}>
+                          {op.type}
+                        </span>
+                        <span>{op.timestamp?.split('T')[1]?.replace('Z', '')}</span>
+                      </div>
+                      {op.sql && <p className="text-slate-300 truncate mt-0.5">{op.sql}</p>}
+                      {op.error && <p className="text-rose-400 font-bold mt-0.5">{op.error}</p>}
+                      {op.details && (
+                        <p className="text-slate-400 text-[10px] mt-0.5">
+                          {typeof op.details === 'object' ? JSON.stringify(op.details) : String(op.details)}
+                        </p>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </div>
           </div>
         </Modal>
     </div>
