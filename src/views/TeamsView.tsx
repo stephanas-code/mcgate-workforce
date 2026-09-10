@@ -12,7 +12,6 @@ import {
   AlertTriangle,
   Camera,
   Upload,
-  Sparkles,
   Search,
   Phone,
   RefreshCw
@@ -20,6 +19,7 @@ import {
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { Pagination } from '../components/Pagination.tsx';
+import { Modal } from '../components/Modal.tsx';
 
 export const TeamsView: React.FC = () => {
   const { user } = useAuth();
@@ -204,11 +204,11 @@ export const TeamsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
-      {/* Header with vibrant styling */}
-      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-gradient-to-r from-pink-500/10 via-purple-500/10 to-indigo-500/10 p-6 rounded-2xl border border-indigo-100/80 shadow-xs">
+      {/* Header with professional corporate styling */}
+      <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
-          <div className="flex items-center gap-2 text-indigo-600 font-bold text-xs uppercase tracking-wider mb-1">
-            <Sparkles className="w-4 h-4 text-pink-500" />
+          <div className="flex items-center gap-2 text-blue-600 font-bold text-xs uppercase tracking-wider mb-1">
+            <Users2 className="w-4 h-4 text-blue-600" />
             <span>Colleagues & Corporate Hierarchy</span>
           </div>
           <h1 className="text-2xl sm:text-3xl font-extrabold text-slate-900 tracking-tight font-display">
@@ -222,7 +222,7 @@ export const TeamsView: React.FC = () => {
         {isAdmin && (
           <button
             onClick={() => setIsAddEmployeeModalOpen(true)}
-            className="px-4 py-2.5 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/20 transition flex items-center gap-2 cursor-pointer shrink-0"
+            className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition flex items-center gap-2 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
             <span>Onboard Colleague</span>
@@ -319,7 +319,7 @@ export const TeamsView: React.FC = () => {
                                   className="w-10 h-10 rounded-xl object-cover ring-2 ring-indigo-500/20 shadow-xs"
                                 />
                               ) : (
-                                <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 text-white font-bold text-xs flex items-center justify-center shadow-xs">
+                                <div className="w-10 h-10 rounded-xl bg-slate-900 text-blue-300 font-bold text-xs flex items-center justify-center shadow-xs border border-slate-700">
                                   {e.first_name?.[0]}
                                   {e.last_name?.[0]}
                                 </div>
@@ -453,16 +453,14 @@ export const TeamsView: React.FC = () => {
       )}
 
       {/* TEAMMATE PHOTO UPLOAD MODAL */}
-      {photoModalEmployee && (
-        <div
-          className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm"
-          onClick={() => setPhotoModalEmployee(null)}
-        >
-          <div
-            className="bg-white rounded-2xl shadow-2xl border border-indigo-100 w-full max-w-md overflow-hidden animate-in fade-in zoom-in-95"
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="relative bg-gradient-to-r from-pink-500 via-purple-600 to-indigo-600 p-5 text-white">
+      <Modal
+        isOpen={Boolean(photoModalEmployee)}
+        onClose={() => setPhotoModalEmployee(null)}
+        maxWidth="max-w-md"
+      >
+        {photoModalEmployee && (
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full overflow-hidden">
+            <div className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 p-5 text-white">
               <button
                 onClick={() => setPhotoModalEmployee(null)}
                 className="absolute top-4 right-4 p-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
@@ -470,10 +468,10 @@ export const TeamsView: React.FC = () => {
                 <X className="w-5 h-5" />
               </button>
               <div className="flex items-center gap-2">
-                <Camera className="w-5 h-5" />
+                <Camera className="w-5 h-5 text-blue-300" />
                 <h3 className="text-base font-bold">Teammate Profile Picture</h3>
               </div>
-              <p className="text-xs text-indigo-100 mt-1">
+              <p className="text-xs text-blue-200/80 mt-1">
                 Upload or update photo for {photoModalEmployee.first_name} {photoModalEmployee.last_name}
               </p>
             </div>
@@ -575,17 +573,20 @@ export const TeamsView: React.FC = () => {
               </div>
             </div>
           </div>
-        </div>
-      )}
+        )}
+      </Modal>
 
       {/* Onboard Employee Modal */}
-      {isAddEmployeeModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-sm p-4">
-          <div className="bg-white rounded-2xl shadow-2xl border border-indigo-100 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
-            <div className="px-6 py-4 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 text-white flex items-center justify-between">
+      <Modal
+        isOpen={isAddEmployeeModalOpen}
+        onClose={() => setIsAddEmployeeModalOpen(false)}
+        maxWidth="max-w-lg"
+      >
+        <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full overflow-hidden">
+            <div className="px-6 py-4 bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 text-white flex items-center justify-between">
               <div>
                 <h3 className="text-base font-bold">Onboard New Colleague</h3>
-                <p className="text-xs text-indigo-100">Create workspace identity and assign squads</p>
+                <p className="text-xs text-blue-200/80">Create workspace identity and assign squads</p>
               </div>
               <button
                 onClick={() => setIsAddEmployeeModalOpen(false)}
@@ -774,15 +775,14 @@ export const TeamsView: React.FC = () => {
                 <button
                   type="submit"
                   disabled={isSubmitting}
-                  className="px-5 py-2 bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-600 hover:from-indigo-700 hover:to-pink-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/20 cursor-pointer"
+                  className="px-5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 cursor-pointer"
                 >
                   Onboard Colleague
                 </button>
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </Modal>
     </div>
   );
 };

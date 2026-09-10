@@ -1,9 +1,54 @@
 import { Router } from 'express';
+import path from 'path';
+import zlib from 'zlib';
 import { queryOne, queryAll, execute } from '../db.ts';
 import { authenticateToken, AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
 import { createNotification } from '../notifications.ts';
 import { calculateMilestoneMetrics } from '../milestones.ts';
+
+const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'txt', 'md']);
+const MAX_DOCUMENT_SIZE = 15 * 1024 * 1024; // 15MB upload boundary
+
+// Helper to extract text from Microsoft Word (.docx) files without external dependencies
+export function extractDocxText(buffer: Buffer): string {
+  try {
+    let pos = 0;
+    while (pos < buffer.length - 30) {
+      if (buffer.readUInt32LE(pos) === 0x04034b50) {
+        const compression = buffer.readUInt16LE(pos + 8);
+        const compressedSize = buffer.readUInt32LE(pos + 18);
+        const fileNameLen = buffer.readUInt16LE(pos + 26);
+        const extraLen = buffer.readUInt16LE(pos + 28);
+        const fileName = buffer.toString('utf8', pos + 30, pos + 30 + fileNameLen);
+        const dataOffset = pos + 30 + fileNameLen + extraLen;
+        if (fileName === 'word/document.xml') {
+          const compressedData = buffer.subarray(dataOffset, dataOffset + compressedSize);
+          let xmlStr = '';
+          if (compression === 8) {
+            // Zip bomb defense: bound decompressed XML to max 5MB
+            xmlStr = zlib.inflateRawSync(compressedData, { maxOutputLength: 5 * 1024 * 1024 }).toString('utf8');
+          } else if (compression === 0) {
+            xmlStr = compressedData.toString('utf8');
+          }
+          // Extract paragraphs and text
+          const paragraphs = xmlStr.match(/<w:p[\s>].*?<\/w:p>/gs) || [];
+          const lines = paragraphs.map(p => {
+            const texts = p.match(/<w:t[\s>].*?<\/w:t>/gs) || [];
+            return texts.map(t => t.replace(/<[^>]+>/g, '')).join('');
+          }).filter(t => t.trim().length > 0);
+          return lines.join('\n\n');
+        }
+        pos = dataOffset + compressedSize;
+      } else {
+        pos++;
+      }
+    }
+  } catch (err) {
+    console.warn('[extractDocxText] Safe decompression failed or aborted:', err);
+  }
+  return '';
+}
 
 const router = Router();
 
@@ -213,9 +258,6 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// Allowed document extensions
-const ALLOWED_EXTENSIONS = new Set(['txt', 'docx', 'pdf', 'md']);
-
 // 3. Create project with auto-generated unique code and optional document uploads
 router.post('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
@@ -259,26 +301,41 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
     let uploadedDocsCount = 0;
     if (Array.isArray(documents) && documents.length > 0) {
       for (const doc of documents) {
-        const ext = (doc.fileExtension || doc.filename.split('.').pop() || '').toLowerCase();
-        if (!ALLOWED_EXTENSIONS.has(ext)) {
+        const rawExt = String(doc.fileExtension || (doc.filename ? doc.filename.split('.').pop() : '')).replace(/^\./, '').toLowerCase().trim();
+        if (!ALLOWED_EXTENSIONS.has(rawExt)) {
           continue; // Skip invalid extensions
         }
 
-        const filename = doc.filename || `doc_${Date.now()}.${ext}`;
-        const originalName = doc.originalName || filename;
-        const fileSize = Number(doc.fileSize) || 1024;
-        const mimeType = doc.mimeType || (ext === 'pdf' ? 'application/pdf' : ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain');
-        const fileData = doc.fileData || '';
+        const rawOriginal = String(doc.originalName || doc.filename || `doc_${Date.now()}.${rawExt}`);
+        const baseClean = path.basename(rawOriginal).replace(/[\0\x00-\x1f\x7f-\x9f\\/]/g, '_').trim();
+        const safeOriginalName = baseClean.length > 0 ? baseClean.substring(0, 120) : `document.${rawExt}`;
+        const safeStorageName = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${rawExt}`;
+
+        const fileSize = Number(doc.fileSize) || 0;
+        if (fileSize > MAX_DOCUMENT_SIZE) {
+          continue; // Skip oversized files
+        }
+
+        const fileData = typeof doc.fileData === 'string' ? doc.fileData : '';
+        if (fileData.length > MAX_DOCUMENT_SIZE * 1.45) {
+          continue;
+        }
+
+        const mimeType = doc.mimeType || (
+          rawExt === 'pdf' ? 'application/pdf' :
+          rawExt === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' :
+          rawExt === 'md' ? 'text/markdown' : 'text/plain'
+        );
 
         await execute(`
           INSERT INTO project_documents (project_id, filename, original_name, file_size, file_extension, mime_type, file_data, uploaded_by_user_id, uploaded_by_name, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           projectId,
-          filename,
-          originalName,
+          safeStorageName,
+          safeOriginalName,
           fileSize,
-          ext,
+          rawExt,
           mimeType,
           fileData,
           req.user!.id,
@@ -419,9 +476,21 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
 router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const projectId = Number(req.params.id);
-    const project = await queryOne<{ id: number; name: string; code: string }>('SELECT id, name, code FROM projects WHERE id = ?', [projectId]);
+    const project = await queryOne<{ id: number; name: string; code: string; department_id: number | null }>('SELECT id, name, code, department_id FROM projects WHERE id = ?', [projectId]);
     if (!project) {
       return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    // Role / Authorization check: Super Admin, Admin, Manager or assigned project members can upload
+    const isElevated = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN' || req.user!.role === 'MANAGER';
+    if (!isElevated) {
+      const isAssigned = await queryOne<{ id: number }>(
+        'SELECT id FROM assignments WHERE project_id = ? AND employee_id = ?',
+        [projectId, req.user!.employeeId || 0]
+      );
+      if (!isAssigned) {
+        return res.status(403).json({ error: 'Permission denied. Only assigned project collaborators may upload documents.' });
+      }
     }
 
     const { documents } = req.body;
@@ -435,28 +504,82 @@ router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) =
     const insertedIds: number[] = [];
 
     for (const doc of docList) {
-      const ext = (doc.fileExtension || (doc.filename ? doc.filename.split('.').pop() : '')).toLowerCase();
-      if (!ALLOWED_EXTENSIONS.has(ext)) {
+      const rawExt = String(doc.fileExtension || (doc.filename ? doc.filename.split('.').pop() : '')).replace(/^\./, '').toLowerCase().trim();
+      if (!ALLOWED_EXTENSIONS.has(rawExt)) {
         return res.status(400).json({
-          error: `Unsupported file format: ".${ext}". Only .txt, .docx, .pdf, and .md are supported.`
+          error: `Unsupported file format: ".${rawExt}". Permitted formats: .pdf, .docx, .txt, .md`
         });
       }
 
-      const filename = doc.filename || `doc_${Date.now()}.${ext}`;
-      const originalName = doc.originalName || filename;
-      const fileSize = Number(doc.fileSize) || 1024;
-      const mimeType = doc.mimeType || (ext === 'pdf' ? 'application/pdf' : ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain');
-      const fileData = doc.fileData || '';
+      // Neutralize path traversal and invalid characters
+      const rawOriginal = String(doc.originalName || doc.filename || `doc_${Date.now()}.${rawExt}`);
+      const baseClean = path.basename(rawOriginal).replace(/[\0\x00-\x1f\x7f-\x9f\\/]/g, '_').trim();
+      const safeOriginalName = baseClean.length > 0 ? baseClean.substring(0, 120) : `document.${rawExt}`;
+      const safeFilename = `doc_${Date.now()}_${Math.random().toString(36).substring(2, 8)}.${rawExt}`;
+
+      const fileSize = Number(doc.fileSize) || 0;
+      if (fileSize > MAX_DOCUMENT_SIZE) {
+        return res.status(400).json({
+          error: `File "${safeOriginalName}" exceeds the maximum allowed upload boundary of 15MB.`
+        });
+      }
+
+      const fileData = typeof doc.fileData === 'string' ? doc.fileData : '';
+      if (fileData.length > MAX_DOCUMENT_SIZE * 1.45) {
+        return res.status(400).json({
+          error: `Payload for "${safeOriginalName}" exceeds memory buffer threshold.`
+        });
+      }
+
+      // Magic byte verification for binary files
+      let rawBytes: Buffer | null = null;
+      if (fileData.startsWith('data:')) {
+        const commaIdx = fileData.indexOf(',');
+        if (commaIdx !== -1) {
+          rawBytes = Buffer.from(fileData.substring(commaIdx + 1), 'base64');
+        }
+      } else if (rawExt === 'pdf' || rawExt === 'docx') {
+        try {
+          rawBytes = Buffer.from(fileData, 'base64');
+        } catch {
+          rawBytes = null;
+        }
+      }
+
+      if (rawBytes && rawBytes.length > 0) {
+        if (rawExt === 'pdf') {
+          // Verify %PDF- magic signature
+          const header = rawBytes.subarray(0, 5).toString('ascii');
+          if (!header.startsWith('%PDF')) {
+            return res.status(400).json({
+              error: `Security verification failed: "${safeOriginalName}" does not contain a valid PDF structure.`
+            });
+          }
+        } else if (rawExt === 'docx') {
+          // Verify PK ZIP magic signature (0x50, 0x4B)
+          if (rawBytes.length < 4 || rawBytes[0] !== 0x50 || rawBytes[1] !== 0x4B) {
+            return res.status(400).json({
+              error: `Security verification failed: "${safeOriginalName}" is not a valid DOCX package.`
+            });
+          }
+        }
+      }
+
+      const mimeType = doc.mimeType || (
+        rawExt === 'pdf' ? 'application/pdf' :
+        rawExt === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' :
+        rawExt === 'md' ? 'text/markdown' : 'text/plain'
+      );
 
       const { lastInsertRowid: docId } = await execute(`
         INSERT INTO project_documents (project_id, filename, original_name, file_size, file_extension, mime_type, file_data, uploaded_by_user_id, uploaded_by_name, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `, [
         projectId,
-        filename,
-        originalName,
+        safeFilename,
+        safeOriginalName,
         fileSize,
-        ext,
+        rawExt,
         mimeType,
         fileData,
         req.user!.id,
@@ -475,7 +598,7 @@ router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) =
       resource: 'PROJECT',
       resourceId: projectId,
       ipAddress: req.ip,
-      afterValue: `Uploaded ${insertedIds.length} document(s) to project ${project.code}`
+      afterValue: `Uploaded ${insertedIds.length} verified document(s) to project ${project.code}`
     });
 
     const updatedDocuments = await queryAll(`
@@ -487,7 +610,7 @@ router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) =
 
     res.json({
       success: true,
-      message: `${insertedIds.length} document(s) uploaded successfully`,
+      message: `${insertedIds.length} document(s) uploaded and verified successfully`,
       documents: updatedDocuments
     });
   } catch (err: any) {
@@ -502,6 +625,22 @@ router.get('/:id/documents/:docId', authenticateToken, async (req: AuthRequest, 
     const projectId = Number(req.params.id);
     const docId = Number(req.params.docId);
 
+    // Confidentiality check: ensure user is authorized to view this project's documents
+    const isElevated = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN' || req.user!.role === 'MANAGER';
+    if (!isElevated) {
+      const isAuthorized = await queryOne<{ id: number }>(`
+        SELECT p.id FROM projects p
+        LEFT JOIN assignments a ON a.project_id = p.id
+        WHERE p.id = ? AND (
+          p.lead_employee_id = ? OR a.employee_id = ? OR p.department_id = ?
+        )
+      `, [projectId, req.user!.employeeId || 0, req.user!.employeeId || 0, req.user!.departmentId || 0]);
+
+      if (!isAuthorized) {
+        return res.status(403).json({ error: 'Access denied: You are not authorized to view confidential documents for this project.' });
+      }
+    }
+
     const doc = await queryOne<any>(`
       SELECT * FROM project_documents WHERE id = ? AND project_id = ?
     `, [docId, projectId]);
@@ -510,9 +649,100 @@ router.get('/:id/documents/:docId', authenticateToken, async (req: AuthRequest, 
       return res.status(404).json({ error: 'Document not found.' });
     }
 
-    res.json(doc);
+    let extractedText: string | null = null;
+    const ext = (doc.file_extension || '').toLowerCase();
+
+    if (ext === 'docx' && doc.file_data) {
+      try {
+        let base64Part = doc.file_data;
+        if (base64Part.startsWith('data:')) {
+          base64Part = base64Part.split(',')[1];
+        }
+        const buf = Buffer.from(base64Part, 'base64');
+        extractedText = extractDocxText(buf);
+      } catch (e) {
+        console.warn('Could not extract docx text:', e);
+      }
+    } else if ((ext === 'txt' || ext === 'md') && doc.file_data) {
+      if (doc.file_data.startsWith('data:')) {
+        const base64Part = doc.file_data.split(',')[1];
+        try {
+          extractedText = Buffer.from(base64Part, 'base64').toString('utf8');
+        } catch {
+          extractedText = doc.file_data;
+        }
+      } else {
+        extractedText = doc.file_data;
+      }
+    }
+
+    res.json({
+      ...doc,
+      extracted_text: extractedText
+    });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve document.' });
+  }
+});
+
+// 5b. Stream raw document (for native browser PDF rendering and downloads)
+router.get('/:id/documents/:docId/raw', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const docId = Number(req.params.docId);
+
+    // Confidentiality check
+    const isElevated = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN' || req.user!.role === 'MANAGER';
+    if (!isElevated) {
+      const isAuthorized = await queryOne<{ id: number }>(`
+        SELECT p.id FROM projects p
+        LEFT JOIN assignments a ON a.project_id = p.id
+        WHERE p.id = ? AND (
+          p.lead_employee_id = ? OR a.employee_id = ? OR p.department_id = ?
+        )
+      `, [projectId, req.user!.employeeId || 0, req.user!.employeeId || 0, req.user!.departmentId || 0]);
+
+      if (!isAuthorized) {
+        return res.status(403).json({ error: 'Access denied: You are not authorized to access confidential files for this project.' });
+      }
+    }
+
+    const doc = await queryOne<any>(`
+      SELECT * FROM project_documents WHERE id = ? AND project_id = ?
+    `, [docId, projectId]);
+
+    if (!doc || !doc.file_data) {
+      return res.status(404).json({ error: 'Document data not found.' });
+    }
+
+    const ext = (doc.file_extension || '').toLowerCase();
+    let mimeType = doc.mime_type || (ext === 'pdf' ? 'application/pdf' : ext === 'docx' ? 'application/vnd.openxmlformats-officedocument.wordprocessingml.document' : 'text/plain');
+
+    let buffer: Buffer;
+    if (doc.file_data.startsWith('data:')) {
+      const parts = doc.file_data.split(',');
+      const meta = parts[0];
+      const match = meta.match(/:(.*?);/);
+      if (match) mimeType = match[1];
+      buffer = Buffer.from(parts[1] || '', 'base64');
+    } else if (ext === 'pdf' && !doc.file_data.startsWith('%PDF')) {
+      try {
+        buffer = Buffer.from(doc.file_data, 'base64');
+      } catch {
+        buffer = Buffer.from(doc.file_data, 'utf8');
+      }
+    } else {
+      buffer = Buffer.from(doc.file_data, 'utf8');
+    }
+
+    res.setHeader('Content-Type', mimeType);
+    res.setHeader('Content-Disposition', `inline; filename="${encodeURIComponent(doc.original_name)}"`);
+    res.setHeader('Content-Length', buffer.length);
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    res.setHeader('Cache-Control', 'private, no-cache, no-store, must-revalidate');
+    res.send(buffer);
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to stream raw document.' });
   }
 });
 

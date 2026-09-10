@@ -23,6 +23,7 @@ import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
 import { TaskStatus, TaskPriority } from '../types.ts';
 import { TaskModal } from './TaskModal.tsx';
+import { Modal } from './Modal.tsx';
 
 interface TaskDetailModalProps {
   taskId: number | null;
@@ -226,8 +227,8 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
 
   return (
     <>
-      <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4">
-        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl max-h-[90vh] flex flex-col overflow-hidden animate-in fade-in zoom-in-95">
+      <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-3xl">
+        <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-h-[90vh] flex flex-col overflow-hidden">
           {/* Header */}
           <div className="px-6 py-4 border-b border-slate-200 flex items-center justify-between bg-slate-50">
             <div className="flex items-center gap-3">
@@ -633,7 +634,7 @@ export const TaskDetailModal: React.FC<TaskDetailModalProps> = ({
             </div>
           )}
         </div>
-      </div>
+      </Modal>
 
       {/* Task Edit Modal */}
       {isEditModalOpen && (

@@ -15,15 +15,48 @@ import notificationRoutes from './server/routes/notificationRoutes.ts';
 import settingRoutes from './server/routes/settingRoutes.ts';
 import searchRoutes from './server/routes/searchRoutes.ts';
 
+// Global error containment to guarantee high availability
+process.on('uncaughtException', (err) => {
+  console.error('[Process UncaughtException]', err);
+});
+process.on('unhandledRejection', (reason) => {
+  console.error('[Process UnhandledRejection]', reason);
+});
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  // Basic security headers and JSON parsing
-  app.use(express.json({ limit: '35mb' }));
-  app.use(express.urlencoded({ extended: true, limit: '35mb' }));
+  // Disable fingerprinting header
+  app.disable('x-powered-by');
 
-  // Prevent caching of API responses
+  // Strict payload limits to prevent buffer exhaustion / DoS
+  app.use(express.json({ limit: '15mb' }));
+  app.use(express.urlencoded({ extended: true, limit: '15mb' }));
+
+  // Comprehensive Enterprise HTTP Security Headers
+  app.use((_req, res, next) => {
+    // MIME-type sniffing defense
+    res.setHeader('X-Content-Type-Options', 'nosniff');
+    // Clickjacking defense
+    res.setHeader('X-Frame-Options', 'SAMEORIGIN');
+    // Legacy XSS filter
+    res.setHeader('X-XSS-Protection', '1; mode=block');
+    // Enforce HTTPS in production
+    res.setHeader('Strict-Transport-Security', 'max-age=31536000; includeSubDomains');
+    // Referrer confidentiality
+    res.setHeader('Referrer-Policy', 'strict-origin-when-cross-origin');
+    // Hardware API isolation
+    res.setHeader('Permissions-Policy', 'camera=(), microphone=(), geolocation=()');
+    // Content Security Policy
+    res.setHeader(
+      'Content-Security-Policy',
+      "default-src 'self'; script-src 'self' 'unsafe-inline' 'unsafe-eval'; style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; font-src 'self' https://fonts.gstatic.com data:; img-src 'self' data: blob:; object-src 'self' blob:; connect-src 'self' ws: http: https:; frame-src 'self' blob:; frame-ancestors 'self';"
+    );
+    next();
+  });
+
+  // Prevent caching of confidential API responses
   app.use('/api', (_req, res, next) => {
     res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
     res.setHeader('Pragma', 'no-cache');
@@ -52,6 +85,15 @@ async function startServer() {
   app.use('/api/notifications', notificationRoutes);
   app.use('/api/settings', settingRoutes);
   app.use('/api/search', searchRoutes);
+
+  // Global safe error handling middleware (Never leak stack traces in production)
+  app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+    console.error('[API Server Error]', err);
+    if (err.type === 'entity.too.large') {
+      return res.status(413).json({ error: 'Payload exceeds the 15MB file size boundary.' });
+    }
+    res.status(err.status || 500).json({ error: 'An internal server error occurred.' });
+  });
 
   // Initialize relational schema and seed initial enterprise data
   try {

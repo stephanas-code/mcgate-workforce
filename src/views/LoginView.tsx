@@ -1,48 +1,35 @@
 import React, { useState } from 'react';
-import { Shield, Lock, Mail, ArrowRight, UserCheck, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Shield, Lock, Mail, ArrowRight, Eye, EyeOff, AlertTriangle, CheckCircle2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
 export const LoginView: React.FC = () => {
-  const { login, switchDemoRole } = useAuth();
-  const [email, setEmail] = useState('admin@mcgate.tech');
-  const [password, setPassword] = useState('password123');
+  const { login } = useAuth();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+    if (!email.trim() || !password) {
+      setError('Please provide both your corporate email and password.');
+      return;
+    }
+
     setIsLoading(true);
     setError(null);
     try {
-      await login(email, password);
+      await login(email.trim(), password);
     } catch (err: any) {
-      setError(err.message || 'Authentication failed');
+      setError(err.message || 'Invalid credentials or session expired. Please try again.');
     } finally {
       setIsLoading(false);
     }
   };
-
-  const handleQuickLogin = async (roleOrEmail: string) => {
-    setIsLoading(true);
-    setError(null);
-    try {
-      await switchDemoRole(roleOrEmail);
-    } catch (err: any) {
-      setError(err.message || 'Demo login failed');
-    } finally {
-      setIsLoading(false);
-    }
-  };
-
-  const demoAccounts = [
-    { role: 'SUPER_ADMIN', name: 'Marcus Vance', title: 'Chief Technology Officer', email: 'admin@mcgate.tech', color: 'border-purple-200 bg-purple-50/50 hover:border-purple-400 text-purple-900' },
-    { role: 'ADMIN', name: 'Elena Rostova', title: 'Head of Human Resources', email: 'hr@mcgate.tech', color: 'border-blue-200 bg-blue-50/50 hover:border-blue-400 text-blue-900' },
-    { role: 'MANAGER', name: 'David Chen', title: 'Engineering Lead & Architect', email: 'lead.eng@mcgate.tech', color: 'border-amber-200 bg-amber-50/50 hover:border-amber-400 text-amber-900' },
-    { role: 'EMPLOYEE', name: 'John Doe', title: 'Senior Systems Engineer', email: 'john.doe@mcgate.tech', color: 'border-slate-200 bg-slate-50 hover:border-slate-400 text-slate-800' }
-  ];
 
   return (
-    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 sm:p-6 text-slate-100">
+    <div className="min-h-screen bg-slate-950 flex flex-col justify-center items-center p-4 sm:p-6 text-slate-100 selection:bg-blue-600 selection:text-white">
       <div className="w-full max-w-md space-y-6">
         {/* Brand Header */}
         <div className="text-center space-y-2">
@@ -61,11 +48,11 @@ export const LoginView: React.FC = () => {
         <div className="bg-white text-slate-800 rounded-2xl p-6 sm:p-8 shadow-2xl border border-slate-200 space-y-5">
           <div>
             <h2 className="text-base font-bold text-slate-900">Sign in with Enterprise ID</h2>
-            <p className="text-xs text-slate-500 mt-0.5">Enter your corporate credentials to continue</p>
+            <p className="text-xs text-slate-500 mt-0.5">Enter your corporate credentials to access your session</p>
           </div>
 
           {error && (
-            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center gap-2">
+            <div className="p-3 bg-rose-50 border border-rose-200 text-rose-800 text-xs rounded-lg flex items-center gap-2 animate-in fade-in duration-200">
               <AlertTriangle className="w-4 h-4 shrink-0 text-rose-600" />
               <span>{error}</span>
             </div>
@@ -80,12 +67,13 @@ export const LoginView: React.FC = () => {
                 <input
                   type="email"
                   required
+                  autoComplete="email"
                   value={email}
                   onChange={(e) => setEmail(e.target.value)}
                   placeholder="name@mcgate.tech"
-                  className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                  className="w-full pl-9 pr-3 py-2.5 border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition placeholder:text-slate-400"
                 />
-                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <Mail className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
               </div>
             </div>
 
@@ -95,46 +83,46 @@ export const LoginView: React.FC = () => {
               </label>
               <div className="relative">
                 <input
-                  type="password"
+                  type={showPassword ? 'text' : 'password'}
                   required
+                  autoComplete="current-password"
                   value={password}
                   onChange={(e) => setPassword(e.target.value)}
-                  className="w-full pl-9 pr-3 py-2 border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none"
+                  placeholder="••••••••"
+                  className="w-full pl-9 pr-10 py-2.5 border border-slate-300 rounded-lg text-xs text-slate-800 focus:ring-2 focus:ring-blue-500 focus:border-blue-500 outline-none transition placeholder:text-slate-400"
                 />
-                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-2.5 pointer-events-none" />
+                <Lock className="w-4 h-4 text-slate-400 absolute left-3 top-3 pointer-events-none" />
+                <button
+                  type="button"
+                  onClick={() => setShowPassword(!showPassword)}
+                  aria-label={showPassword ? 'Hide password' : 'Show password'}
+                  className="absolute right-3 top-2.5 text-slate-400 hover:text-slate-600 cursor-pointer p-0.5 rounded transition"
+                >
+                  {showPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
               </div>
             </div>
 
             <button
               type="submit"
               disabled={isLoading}
-              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer"
+              className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition disabled:opacity-50 flex items-center justify-center gap-2 cursor-pointer mt-2"
             >
-              <span>Authenticate Session</span>
-              <ArrowRight className="w-4 h-4" />
+              {isLoading ? (
+                <span>Authenticating...</span>
+              ) : (
+                <>
+                  <span>Authenticate Session</span>
+                  <ArrowRight className="w-4 h-4" />
+                </>
+              )}
             </button>
           </form>
 
-          {/* Quick Demo Access Switcher */}
-          <div className="pt-4 border-t border-slate-100 space-y-3">
-            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block text-center">
-              Quick Test Personas (One-Click Sign In)
-            </span>
-
-            <div className="grid grid-cols-2 gap-2">
-              {demoAccounts.map((d) => (
-                <button
-                  key={d.role}
-                  type="button"
-                  disabled={isLoading}
-                  onClick={() => handleQuickLogin(d.role)}
-                  className={`p-2.5 rounded-lg border text-left transition cursor-pointer disabled:opacity-50 ${d.color}`}
-                >
-                  <div className="font-bold text-xs">{d.name}</div>
-                  <div className="text-[10px] opacity-80">{d.role.replace('_', ' ')}</div>
-                </button>
-              ))}
-            </div>
+          {/* Security Notice */}
+          <div className="pt-4 border-t border-slate-100 flex items-center justify-center gap-1.5 text-[11px] text-slate-500">
+            <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            <span>Encrypted zero-trust gateway with rate-limiting protection</span>
           </div>
         </div>
 

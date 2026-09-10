@@ -263,14 +263,38 @@ export async function initDatabase(): Promise<void> {
     await seedInitialData();
   }
 
-  // Remove all demo accounts, leaving ONLY the Super Admin
+  // Remove all demo accounts (Marcus Vance, Elena Rostova, David Chen, John Doe), leaving ONLY the Super Admin
   try {
     await executeBatch([
+      "DELETE FROM employees WHERE first_name IN ('Marcus', 'Elena', 'David', 'John') AND last_name IN ('Vance', 'Rostova', 'Chen', 'Doe');",
+      "DELETE FROM users WHERE email IN ('admin@mcgate.tech', 'hr@mcgate.tech', 'lead.eng@mcgate.tech', 'john.doe@mcgate.tech');",
       "DELETE FROM users WHERE role != 'SUPER_ADMIN';",
       "DELETE FROM employees WHERE user_id NOT IN (SELECT id FROM users);"
     ]);
   } catch (e) {
     console.error('Failed to clean demo accounts:', e);
+  }
+
+  // Ensure the Super User account exists
+  try {
+    const superUser = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
+    if (!superUser) {
+      const defaultPassword = 'password123';
+      const salt = bcrypt.genSaltSync(10);
+      const passwordHash = bcrypt.hashSync(defaultPassword, salt);
+      const now = new Date().toISOString();
+      await executeBatch([
+        `INSERT INTO users (email, password_hash, role, status, created_at, updated_at) VALUES ('superuser@mcgate.tech', '${passwordHash}', 'SUPER_ADMIN', 'ACTIVE', '${now}', '${now}');`
+      ]);
+      const created = await queryOne<{ id: number }>("SELECT id FROM users WHERE email = 'superuser@mcgate.tech'");
+      if (created) {
+        await executeBatch([
+          `INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, department_id, team_id, manager_id, employment_status, joined_date, created_at) VALUES (${created.id}, 'SU-001', 'Super', 'User', '+49 30 555-0100', 'Super Administrator', 1, 1, ${created.id}, 'FULL_TIME', '2025-01-01', '${now}');`
+        ]);
+      }
+    }
+  } catch (e) {
+    console.error('Failed to ensure superuser:', e);
   }
 
   // Clear all mockup operational records so the system is clean, realtime, and deployment ready
@@ -354,12 +378,12 @@ export async function seedInitialData(): Promise<void> {
   // 4. Initial Users & Employees: ONLY Super Admin accounts
   const usersToCreate = [
     {
-      email: 'admin@mcgate.tech',
+      email: 'superuser@mcgate.tech',
       role: 'SUPER_ADMIN',
-      firstName: 'Marcus',
-      lastName: 'Vance',
-      jobTitle: 'Super Administrator & Director',
-      code: 'MGT-001',
+      firstName: 'Super',
+      lastName: 'User',
+      jobTitle: 'Super Administrator',
+      code: 'SU-001',
       deptId: 1,
       teamId: 1,
       phone: '+49 30 555-0100',
@@ -427,7 +451,7 @@ This document outlines core infrastructural parameters, container boundaries, an
 - Daily Peak Concurrency: **125,000 req/sec**
 - Uptime Commitment: **99.995%**`,
       uploadedByUserId: 1,
-      uploadedByName: 'Marcus Vance'
+      uploadedByName: 'Super User'
     },
     {
       projectId: project.id,
@@ -453,8 +477,8 @@ This document outlines core infrastructural parameters, container boundaries, an
    - Revert image tag in Helm values file.
    - Issue fast-rollback command to cluster.
    - Review audit logs for discrepancies.`,
-      uploadedByUserId: 3,
-      uploadedByName: 'David Chen'
+      uploadedByUserId: 1,
+      uploadedByName: 'Super User'
     },
     {
       projectId: project.id,
@@ -464,8 +488,8 @@ This document outlines core infrastructural parameters, container boundaries, an
       fileExtension: 'pdf',
       mimeType: 'application/pdf',
       fileData: 'data:application/pdf;base64,JVBERi0xLjQKJeLjz9MKMSAwIG9iajw8L1R5cGUvQ2F0YWxvZy9QYWdlcyAyIDAgUj4+ZW5kb2JqCjIgMCBvYmo8PC9UeXBlL1BhZ2VzL0NvdW50IDEvS2lkc1szIDAgUl0+PmVuZG9iagozIDAgb2JqPDwvVHlwZS9QYWdlL1BhcmVudCAyIDAgUi9NZWRpYUJveFswIDAgNjEyIDc5Ml0vQ29udGVudHMgNCAwIFI+PmVuZG9iago0IDAgb2JqPDwvTGVuZ3RoIDY4Pj5zdHJlYW0KQlQKL0YxIDI0IFRmCjEwMCA3MDAgVGRKCihtY0dhdGUgVGVjaG5vbG9naWVzIC0gU2VjdXJpdHkgQ29tcGxpYW5jZSBBdWRpdCkgVGoKRVQKZW5kc3RyZWFtCmVuZG9iagp4cmVmCjAgNQowMDAwMDAwMDAwIDY1NTM1IGYgCjAwMDAwMDAwMTggMDAwMDAgbiAKMDAwMDAwMDA2NiAwMDAwMCBuIAowMDAwMDAwMTIyIDAwMDAwIG4gCjAwMDAwMDAyMTMgMDAwMDAgbiAKdHJhaWxlcjw8L1NpemUgNT4+CnN0YXJ0eHJlZgoyODIKJCVFT0YK',
-      uploadedByUserId: 4,
-      uploadedByName: 'Sarah Al-Mansoor'
+      uploadedByUserId: 1,
+      uploadedByName: 'Super User'
     }
   ];
 

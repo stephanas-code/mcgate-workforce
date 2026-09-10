@@ -14,8 +14,7 @@ import {
   Globe,
   KeyRound,
   Camera,
-  User,
-  Sparkles
+  User
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useTimezone } from '../context/TimezoneContext.tsx';
@@ -108,7 +107,8 @@ export const Navbar: React.FC<NavbarProps> = ({
     : null;
 
   return (
-    <header className="h-16 bg-white/95 backdrop-blur-md border-b border-indigo-100/90 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs w-full max-w-full">
+    <>
+      <header className="h-16 bg-white/95 backdrop-blur-md border-b border-indigo-100/90 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs w-full max-w-full">
       {/* Brand & Platform Identity */}
       <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
         {/* Mobile Hamburger Toggle Button */}
@@ -129,8 +129,16 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 rounded-xl flex items-center justify-center text-white font-extrabold tracking-wider text-sm sm:text-base shadow-md shadow-indigo-500/25 shrink-0 border border-white/20">
-          <span className="text-amber-200">M</span>G
+        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-slate-900 rounded-xl flex items-center justify-center shadow-md shadow-slate-900/20 shrink-0 border border-slate-700/50 p-2">
+          <svg viewBox="0 0 48 48" fill="none" className="w-full h-full">
+            <defs>
+              <linearGradient id="nav-m-grad" x1="0" x2="1" y1="0" y2="1">
+                <stop offset="0" stopColor="#38BDF8" />
+                <stop offset="1" stopColor="#2563EB" />
+              </linearGradient>
+            </defs>
+            <path d="M4 0 L16 0 L24 24 L32 0 L44 0 L44 48 L32 48 L32 16 L24 40 L16 16 L16 48 L4 48 Z" fill="url(#nav-m-grad)" />
+          </svg>
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -228,8 +236,8 @@ export const Navbar: React.FC<NavbarProps> = ({
         </button>
 
         {/* Super Admin Verified Status Badge */}
-        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-50 via-indigo-50 to-pink-50 border border-purple-200/80 text-[11px] font-bold text-purple-900 shadow-2xs">
-          <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-indigo-50 border border-indigo-200/80 text-[11px] font-bold text-indigo-900 shadow-2xs">
+          <ShieldCheck className="w-4 h-4 text-indigo-600 shrink-0" />
           <span>Super Admin</span>
         </div>
 
@@ -443,21 +451,22 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
       </div>
-
-      {/* Timezone Selector Modal */}
-      <TimezoneSelectorModal
-        isOpen={isTimezoneModalOpen}
-        onClose={() => setIsTimezoneModalOpen(false)}
-      />
-
-      {/* Profile & Password Management Modal */}
-      <UserProfileModal
-        isOpen={isProfileModalOpen}
-        onClose={() => setIsProfileModalOpen(false)}
-        initialTab={profileModalTab}
-      />
     </header>
-  );
+
+    {/* Timezone Selector Modal */}
+    <TimezoneSelectorModal
+      isOpen={isTimezoneModalOpen}
+      onClose={() => setIsTimezoneModalOpen(false)}
+    />
+
+    {/* Profile & Password Management Modal */}
+    <UserProfileModal
+      isOpen={isProfileModalOpen}
+      onClose={() => setIsProfileModalOpen(false)}
+      initialTab={profileModalTab}
+    />
+  </>
+);
 };
 
 export default Navbar;

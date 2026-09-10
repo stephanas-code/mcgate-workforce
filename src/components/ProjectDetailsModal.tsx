@@ -34,6 +34,7 @@ import { formatFileSize } from '../utils/projectCode.ts';
 import { AssignmentModal } from './AssignmentModal.tsx';
 import { TaskModal } from './TaskModal.tsx';
 import { TaskDetailModal } from './TaskDetailModal.tsx';
+import { Modal } from './Modal.tsx';
 
 interface ProjectDetailsModalProps {
   project: ProjectItem | null;
@@ -76,6 +77,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   // Document preview state
   const [previewDoc, setPreviewDoc] = useState<ProjectDocument | null>(null);
   const [previewContent, setPreviewContent] = useState<string | null>(null);
+  const [pdfBlobUrl, setPdfBlobUrl] = useState<string | null>(null);
   const [previewLoading, setPreviewLoading] = useState(false);
   const [copiedText, setCopiedText] = useState(false);
 
@@ -221,24 +223,68 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
     }
   };
 
+  // Close document preview modal and clean up Blob URL
+  const handleClosePreview = () => {
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
+    setPreviewDoc(null);
+    setPreviewContent(null);
+  };
+
   // Open Preview for document
   const handleOpenPreview = async (doc: ProjectDocument) => {
+    if (pdfBlobUrl) {
+      URL.revokeObjectURL(pdfBlobUrl);
+      setPdfBlobUrl(null);
+    }
     setPreviewDoc(doc);
+    setPreviewContent(null);
     setPreviewLoading(true);
     setCopiedText(false);
 
     try {
-      // Fetch full document with file_data
+      // Fetch full document with file_data and server-extracted text
       const fullDoc = await api.getProjectDocumentById(project.id, doc.id);
       setPreviewDoc(fullDoc);
 
-      if (fullDoc.file_extension === 'txt' || fullDoc.file_extension === 'md') {
-        // Decode base64 or raw text
+      const ext = (fullDoc.file_extension || '').toLowerCase().replace(/^\./, '');
+
+      // 1. If it's a PDF, create a native Blob URL for embedding without Chromium data-URI blocks
+      if (ext === 'pdf' && fullDoc.file_data) {
+        try {
+          let base64Part = fullDoc.file_data;
+          if (base64Part.startsWith('data:')) {
+            base64Part = base64Part.split(',')[1] || '';
+          }
+          const binaryString = window.atob(base64Part.replace(/\s/g, ''));
+          const bytes = new Uint8Array(binaryString.length);
+          for (let i = 0; i < binaryString.length; i++) {
+            bytes[i] = binaryString.charCodeAt(i);
+          }
+          const blob = new Blob([bytes], { type: 'application/pdf' });
+          const url = URL.createObjectURL(blob);
+          setPdfBlobUrl(url);
+        } catch (pdfErr) {
+          console.error('Failed to create PDF blob preview:', pdfErr);
+        }
+      }
+
+      // 2. If server provided extracted_text (e.g. from DOCX, TXT, MD)
+      if (fullDoc.extracted_text) {
+        setPreviewContent(fullDoc.extracted_text);
+      } else if (ext === 'txt' || ext === 'md') {
         let rawContent = fullDoc.file_data || '';
         if (rawContent.startsWith('data:')) {
-          const base64Part = rawContent.split(',')[1];
+          const base64Part = (rawContent.split(',')[1] || '').replace(/\s/g, '');
           try {
-            rawContent = decodeURIComponent(escape(window.atob(base64Part)));
+            const binaryString = window.atob(base64Part);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            rawContent = new TextDecoder('utf-8').decode(bytes);
           } catch {
             rawContent = window.atob(base64Part);
           }
@@ -326,14 +372,12 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
   };
 
   return (
-    <div
-      id="project-details-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto"
-    >
-      <div
-        id="project-details-container"
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-4xl my-6 overflow-hidden animate-in fade-in zoom-in-95 flex flex-col max-h-[90vh]"
-      >
+    <>
+      <Modal isOpen={isOpen && Boolean(project)} onClose={onClose} maxWidth="max-w-4xl">
+        <div
+          id="project-details-container"
+          className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full overflow-hidden flex flex-col max-h-[90vh]"
+        >
         {/* Header */}
         <div className="px-6 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50 shrink-0">
           <div className="flex items-center gap-3 min-w-0">
@@ -909,12 +953,17 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
           </button>
         </div>
       </div>
+    </Modal>
 
-      {/* REASSIGN PROJECT LEAD MODAL */}
-      {isReassignModalOpen && (
-        <div className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/70 backdrop-blur-xs p-4">
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-md overflow-hidden animate-in zoom-in-95">
-            <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
+    {/* REASSIGN PROJECT LEAD MODAL */}
+    <Modal
+      isOpen={isReassignModalOpen}
+      onClose={() => setIsReassignModalOpen(false)}
+      maxWidth="max-w-md"
+      zIndex="z-60"
+    >
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full overflow-hidden">
+        <div className="px-5 py-4 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <UserCheck className="w-5 h-5 text-blue-600" />
                 <h3 className="text-sm font-bold text-slate-900">Reassign Project Lead</h3>
@@ -978,8 +1027,7 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
               </div>
             </form>
           </div>
-        </div>
-      )}
+        </Modal>
 
       {/* CREATE MILESTONE MODAL */}
       {isCreateMilestoneOpen && (
@@ -1024,23 +1072,26 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
       )}
 
       {/* DOCUMENT PREVIEW MODAL */}
-      {previewDoc && (
-        <div
-          id="document-preview-backdrop"
-          className="fixed inset-0 z-60 flex items-center justify-center bg-slate-950/75 backdrop-blur-sm p-4"
-        >
-          <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-3xl overflow-hidden flex flex-col max-h-[85vh] animate-in zoom-in-95">
+      <Modal
+        isOpen={Boolean(previewDoc)}
+        onClose={handleClosePreview}
+        maxWidth="max-w-4xl"
+        zIndex="z-60"
+      >
+        {previewDoc && (
+          <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full overflow-hidden flex flex-col max-h-[88vh]">
             <div className="px-5 py-3.5 border-b border-slate-200 bg-slate-50 flex items-center justify-between">
               <div className="flex items-center gap-2.5 min-w-0">
-                <div className="p-1.5 rounded bg-white border border-slate-200 shadow-2xs">
+                <div className="p-2 rounded-lg bg-white border border-slate-200 shadow-2xs text-slate-700">
                   {getDocIcon(previewDoc.file_extension)}
                 </div>
                 <div className="min-w-0">
                   <h4 className="text-sm font-bold text-slate-900 truncate">
                     {previewDoc.original_name}
                   </h4>
-                  <p className="text-[10px] text-slate-500">
-                    {previewDoc.file_extension.toUpperCase()} Document • {formatFileSize(previewDoc.file_size)}
+                  <p className="text-[10px] text-slate-500 font-medium">
+                    {previewDoc.file_extension.toUpperCase().replace(/^\./, '')} Document • {formatFileSize(previewDoc.file_size)}
+                    {previewDoc.uploaded_by_name && ` • Uploaded by ${previewDoc.uploaded_by_name}`}
                   </p>
                 </div>
               </div>
@@ -1049,86 +1100,173 @@ export const ProjectDetailsModal: React.FC<ProjectDetailsModalProps> = ({
                 {previewContent && (
                   <button
                     onClick={handleCopyText}
-                    className="px-2.5 py-1 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-md text-xs font-semibold flex items-center gap-1 transition shadow-2xs"
+                    className="px-2.5 py-1 text-slate-600 hover:text-slate-900 bg-white border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-2xs cursor-pointer"
                   >
                     {copiedText ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
                     <span>{copiedText ? 'Copied' : 'Copy Text'}</span>
                   </button>
                 )}
+                {pdfBlobUrl && (
+                  <a
+                    href={pdfBlobUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="px-2.5 py-1 text-blue-700 hover:text-blue-800 bg-blue-50 hover:bg-blue-100 border border-blue-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-2xs"
+                  >
+                    <ExternalLink className="w-3.5 h-3.5" />
+                    <span>Fullscreen</span>
+                  </a>
+                )}
                 <button
                   onClick={() => handleDownload(previewDoc)}
-                  className="px-2.5 py-1 text-emerald-700 hover:text-emerald-800 bg-emerald-50 border border-emerald-200 rounded-md text-xs font-semibold flex items-center gap-1 transition shadow-2xs"
+                  className="px-2.5 py-1 text-slate-700 hover:text-slate-900 bg-white hover:bg-slate-100 border border-slate-200 rounded-lg text-xs font-semibold flex items-center gap-1 transition shadow-2xs cursor-pointer"
                 >
                   <Download className="w-3.5 h-3.5" />
                   <span>Download</span>
                 </button>
                 <button
-                  onClick={() => setPreviewDoc(null)}
-                  className="text-slate-400 hover:text-slate-600 p-1 rounded-md hover:bg-slate-200/60 transition"
+                  onClick={handleClosePreview}
+                  className="text-slate-400 hover:text-slate-600 p-1.5 rounded-lg hover:bg-slate-200/60 transition cursor-pointer"
+                  title="Close preview"
                 >
                   <X className="w-5 h-5" />
                 </button>
               </div>
             </div>
 
-            <div className="p-5 overflow-y-auto flex-1 bg-slate-900/5 min-h-[300px]">
+            <div className="p-5 overflow-y-auto flex-1 bg-slate-900/5 min-h-[350px]">
               {previewLoading ? (
-                <div className="h-64 flex flex-col items-center justify-center text-slate-400">
-                  <div className="w-8 h-8 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin mb-2" />
-                  <span className="text-xs">Loading document preview...</span>
+                <div className="h-72 flex flex-col items-center justify-center text-slate-400 space-y-3">
+                  <div className="w-8 h-8 border-3 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                  <span className="text-xs font-medium">Extracting and loading document context...</span>
                 </div>
-              ) : previewDoc.file_extension.toLowerCase() === 'pdf' ? (
-                <div className="w-full h-[500px] rounded-lg overflow-hidden border border-slate-300 bg-white shadow-inner">
-                  {previewDoc.file_data ? (
-                    <iframe
-                      src={previewDoc.file_data}
-                      title={previewDoc.original_name}
-                      className="w-full h-full border-0"
-                    />
+              ) : previewDoc.file_extension.toLowerCase().replace(/^\./, '') === 'pdf' ? (
+                <div className="w-full flex flex-col items-center space-y-3">
+                  {pdfBlobUrl ? (
+                    <div className="w-full h-[580px] rounded-xl overflow-hidden border border-slate-300 bg-white shadow-md">
+                      <object
+                        data={pdfBlobUrl}
+                        type="application/pdf"
+                        className="w-full h-full"
+                      >
+                        <iframe
+                          src={pdfBlobUrl}
+                          title={previewDoc.original_name}
+                          className="w-full h-full border-0"
+                        >
+                          <div className="p-8 text-center bg-white h-full flex flex-col items-center justify-center space-y-3">
+                            <FileText className="w-12 h-12 text-blue-600" />
+                            <p className="text-sm font-bold text-slate-800">Inline PDF viewer</p>
+                            <a
+                              href={pdfBlobUrl}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="px-4 py-2 bg-blue-600 text-white rounded-lg text-xs font-bold"
+                            >
+                              Open PDF in New Window
+                            </a>
+                          </div>
+                        </iframe>
+                      </object>
+                    </div>
                   ) : (
-                    <div className="p-12 text-center text-slate-500">PDF preview unavailable.</div>
+                    <div className="p-12 text-center bg-white rounded-xl border border-slate-200 w-full shadow-xs">
+                      <FileText className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                      <h5 className="text-sm font-bold text-slate-800">PDF Document Ready</h5>
+                      <p className="text-xs text-slate-500 mt-1 mb-4">Click below to open or download the PDF file.</p>
+                      <button
+                        onClick={() => handleDownload(previewDoc)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition"
+                      >
+                        Download PDF File
+                      </button>
+                    </div>
                   )}
                 </div>
-              ) : previewDoc.file_extension.toLowerCase() === 'docx' ? (
-                <div className="p-10 text-center bg-white rounded-xl border border-slate-200 shadow-xs space-y-4 max-w-md mx-auto my-6">
-                  <div className="w-14 h-14 rounded-2xl bg-blue-100 text-blue-700 flex items-center justify-center mx-auto shadow-inner">
-                    <FileText className="w-8 h-8" />
+              ) : previewDoc.file_extension.toLowerCase().replace(/^\./, '') === 'docx' ? (
+                <div className="space-y-4">
+                  {/* DOCX Context Header */}
+                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-4 bg-blue-50/80 border border-blue-200/80 rounded-xl">
+                    <div className="flex items-center gap-3">
+                      <div className="w-10 h-10 rounded-lg bg-blue-600 text-white flex items-center justify-center shrink-0 shadow-xs">
+                        <FileText className="w-5 h-5" />
+                      </div>
+                      <div>
+                        <h5 className="text-sm font-bold text-slate-900">{previewDoc.original_name}</h5>
+                        <p className="text-[11px] text-blue-900">
+                          Microsoft Word Document • {formatFileSize(previewDoc.file_size)}
+                          {previewContent ? ` • ${previewContent.split('\n\n').length} paragraphs extracted` : ''}
+                        </p>
+                      </div>
+                    </div>
+                    <button
+                      onClick={() => handleDownload(previewDoc)}
+                      className="px-3.5 py-1.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-xs transition flex items-center justify-center gap-1.5 shrink-0 cursor-pointer"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                      <span>Download Original DOCX</span>
+                    </button>
                   </div>
-                  <div>
-                    <h5 className="text-base font-bold text-slate-900">{previewDoc.original_name}</h5>
-                    <p className="text-xs text-slate-500 mt-1">
-                      Microsoft Word Document ({formatFileSize(previewDoc.file_size)})
-                    </p>
-                  </div>
-                  <button
-                    onClick={() => handleDownload(previewDoc)}
-                    className="w-full py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center justify-center gap-2"
-                  >
-                    <Download className="w-4 h-4" />
-                    <span>Download to View in Microsoft Word</span>
-                  </button>
+
+                  {/* DOCX Text Content Preview */}
+                  {previewContent ? (
+                    <div className="bg-white p-6 sm:p-8 rounded-xl border border-slate-200 shadow-xs max-h-[520px] overflow-y-auto space-y-3.5 font-sans leading-relaxed">
+                      {previewContent.split('\n\n').map((paragraph, idx) => (
+                        <p key={idx} className="text-slate-800 text-xs sm:text-sm leading-relaxed">
+                          {paragraph}
+                        </p>
+                      ))}
+                    </div>
+                  ) : (
+                    <div className="p-10 text-center bg-white rounded-xl border border-slate-200 shadow-xs space-y-3">
+                      <FileText className="w-12 h-12 text-slate-400 mx-auto" />
+                      <h5 className="text-sm font-bold text-slate-800">Word Document Attached</h5>
+                      <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                        This DOCX file does not contain raw text or is protected. You can download and inspect it in Microsoft Word.
+                      </p>
+                      <button
+                        onClick={() => handleDownload(previewDoc)}
+                        className="px-4 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg transition"
+                      >
+                        Download DOCX File
+                      </button>
+                    </div>
+                  )}
                 </div>
-              ) : previewDoc.file_extension.toLowerCase() === 'md' ? (
+              ) : previewDoc.file_extension.toLowerCase().replace(/^\./, '') === 'md' ? (
                 <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs font-sans text-slate-800 text-xs leading-relaxed space-y-3">
-                  <div className="text-[11px] font-mono text-purple-700 bg-purple-50 px-2 py-1 rounded inline-block font-semibold border border-purple-200 mb-2">
-                    Markdown Rendered View
+                  <div className="flex items-center justify-between pb-2 border-b border-slate-100">
+                    <div className="text-[11px] font-mono text-indigo-700 bg-indigo-50 px-2 py-0.5 rounded font-semibold border border-indigo-200">
+                      Markdown Document Context
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {previewContent ? `${previewContent.length} characters` : ''}
+                    </span>
                   </div>
-                  <pre className="whitespace-pre-wrap font-mono text-slate-800 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs overflow-x-auto">
-                    {previewContent}
+                  <pre className="whitespace-pre-wrap font-mono text-slate-800 bg-slate-50 p-4 rounded-lg border border-slate-200 text-xs overflow-x-auto leading-relaxed max-h-[520px]">
+                    {previewContent || 'Empty markdown document.'}
                   </pre>
                 </div>
               ) : (
                 /* Plain text file */
-                <div className="bg-white p-5 rounded-xl border border-slate-200 shadow-xs">
-                  <pre className="whitespace-pre-wrap font-mono text-slate-800 text-xs leading-relaxed">
-                    {previewContent}
+                <div className="bg-white p-6 rounded-xl border border-slate-200 shadow-xs">
+                  <div className="flex items-center justify-between pb-2 mb-3 border-b border-slate-100">
+                    <div className="text-[11px] font-mono text-slate-700 bg-slate-100 px-2 py-0.5 rounded font-semibold border border-slate-200">
+                      Text Document Content
+                    </div>
+                    <span className="text-[11px] text-slate-400 font-mono">
+                      {previewContent ? `${previewContent.length} characters` : ''}
+                    </span>
+                  </div>
+                  <pre className="whitespace-pre-wrap font-mono text-slate-800 text-xs leading-relaxed max-h-[520px] overflow-y-auto">
+                    {previewContent || 'Empty text document.'}
                   </pre>
                 </div>
               )}
             </div>
           </div>
-        </div>
-      )}
-    </div>
+        )}
+      </Modal>
+    </>
   );
 };

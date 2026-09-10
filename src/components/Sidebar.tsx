@@ -11,7 +11,6 @@ import {
   Settings,
   ShieldCheck,
   Server,
-  Sparkles,
   X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -134,7 +133,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
           {/* Mobile Close Bar */}
           <div className="lg:hidden flex items-center justify-between pb-3 border-b border-indigo-100">
             <div className="flex items-center gap-2 text-indigo-700 font-bold text-xs">
-              <Sparkles className="w-4 h-4 text-indigo-600" />
+              <ShieldCheck className="w-4 h-4 text-indigo-600" />
               <span>NAVIGATION MENU</span>
             </div>
             <button
@@ -195,7 +194,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
           </div>
 
           {/* Security & Access Scope Banner */}
-          <div className="p-3.5 rounded-2xl bg-gradient-to-br from-indigo-50/80 via-purple-50/50 to-pink-50/40 border border-indigo-100 text-xs shadow-2xs">
+          <div className="p-3.5 rounded-2xl bg-slate-50 border border-slate-200 text-xs shadow-2xs">
             <div className="flex items-center gap-2 text-indigo-900 font-bold mb-1">
               <ShieldCheck className="w-4 h-4 text-indigo-600" />
               <span>Full Access Scope</span>

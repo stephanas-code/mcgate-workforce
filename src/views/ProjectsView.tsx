@@ -12,8 +12,7 @@ import {
   Search,
   X,
   ArrowRight,
-  UploadCloud,
-  Sparkles
+  UploadCloud
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';

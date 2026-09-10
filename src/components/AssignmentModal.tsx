@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { X, Briefcase, CheckCircle2, AlertTriangle } from 'lucide-react';
+import { Modal } from './Modal.tsx';
 import { api } from '../api.ts';
 import { TaskPriority } from '../types.ts';
 
@@ -85,8 +86,8 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClos
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-lg">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-indigo-600" />
@@ -222,6 +223,6 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClos
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 };

@@ -91,12 +91,17 @@ export async function getUserProfileById(userId: number): Promise<AuthenticatedU
 }
 
 export async function authenticateToken(req: AuthRequest, res: Response, next: NextFunction) {
+  let token: string | undefined;
   const authHeader = req.headers.authorization;
-  if (!authHeader || !authHeader.startsWith('Bearer ')) {
-    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+  if (authHeader && authHeader.startsWith('Bearer ')) {
+    token = authHeader.split(' ')[1];
+  } else if (typeof req.query.token === 'string') {
+    token = req.query.token;
   }
 
-  const token = authHeader.split(' ')[1];
+  if (!token) {
+    return res.status(401).json({ error: 'Unauthorized: Missing or invalid token' });
+  }
   try {
     const decoded = jwt.verify(token, JWT_SECRET) as { id: number };
     const user = await getUserProfileById(decoded.id);

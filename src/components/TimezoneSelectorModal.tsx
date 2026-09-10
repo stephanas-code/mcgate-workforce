@@ -8,9 +8,9 @@ import {
   Navigation,
   Compass,
   X,
-  Sparkles,
   AlertCircle
 } from 'lucide-react';
+import { Modal } from './Modal.tsx';
 import { useTimezone } from '../context/TimezoneContext.tsx';
 import { REGIONAL_TIMEZONES, TimezoneOption, getTimezoneDetails } from '../utils/timezone.ts';
 
@@ -64,14 +64,8 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
   const currentDetails = getTimezoneDetails(timezone);
 
   return (
-    <div
-      className="fixed inset-0 bg-slate-900/60 z-50 flex items-center justify-center p-3 sm:p-4 backdrop-blur-xs animate-in fade-in"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full max-w-2xl overflow-hidden flex flex-col max-h-[90vh] animate-in zoom-in-95"
-        onClick={(e) => e.stopPropagation()}
-      >
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-2xl">
+      <div className="bg-white rounded-2xl shadow-2xl border border-slate-200 w-full overflow-hidden flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="p-4 sm:p-5 bg-gradient-to-r from-slate-900 via-slate-800 to-slate-900 text-white flex items-center justify-between">
           <div className="flex items-center gap-3">
@@ -129,7 +123,7 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
 
         {statusMessage && (
           <div className="px-4 py-2 bg-blue-50 border-b border-blue-200 text-blue-900 text-xs flex items-center gap-2">
-            <Sparkles className="w-4 h-4 text-blue-600 shrink-0" />
+            <Compass className="w-4 h-4 text-blue-600 shrink-0" />
             <span>{statusMessage}</span>
           </div>
         )}
@@ -241,6 +235,6 @@ export const TimezoneSelectorModal: React.FC<TimezoneSelectorModalProps> = ({ is
           </button>
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

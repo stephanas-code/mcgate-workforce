@@ -9,7 +9,6 @@ import {
   FileCode,
   AlignLeft,
   Trash2,
-  Sparkles,
   RefreshCw,
   Lock,
   Unlock,
@@ -17,6 +16,7 @@ import {
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { generateProjectCodeFromName, formatFileSize } from '../utils/projectCode.ts';
+import { Modal } from './Modal.tsx';
 
 interface ProjectModalProps {
   isOpen: boolean;
@@ -244,13 +244,10 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onS
   if (!isOpen) return null;
 
   return (
-    <div
-      id="project-modal-backdrop"
-      className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-3 sm:p-4 overflow-y-auto"
-    >
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-xl">
       <div
         id="project-modal-container"
-        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-xl my-8 overflow-hidden animate-in fade-in zoom-in-95"
+        className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full overflow-hidden"
       >
         {/* Header */}
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
@@ -313,7 +310,7 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onS
                   Project Code
                 </label>
                 <span className="inline-flex items-center gap-1 text-[10px] font-semibold text-emerald-700 bg-emerald-50 border border-emerald-200 px-1.5 py-0.5 rounded">
-                  <Sparkles className="w-3 h-3 text-emerald-600" />
+                  <Check className="w-3 h-3 text-emerald-600" />
                   Auto-Generated Unique
                 </span>
               </div>
@@ -586,6 +583,6 @@ export const ProjectModal: React.FC<ProjectModalProps> = ({ isOpen, onClose, onS
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 };

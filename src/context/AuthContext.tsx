@@ -57,32 +57,20 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     }
   }, [refreshAttendance]);
 
-  // Load demo users and initialize profile on mount
+  // Initialize profile from secure stored token on mount
   useEffect(() => {
     const init = async () => {
-      try {
-        const demos = await api.getDemoUsers();
-        setDemoUsers(demos);
-
-        // If no token exists, default auto-login to Marcus Vance (Super Admin) for immediate seamless exploration
-        if (!getStoredToken() && demos.length > 0) {
-          const res = await api.switchDemo(demos[0].email);
-          setStoredToken(res.token);
-          setUser(res.user);
-          await refreshAttendance();
-          setIsLoading(false);
-          return;
-        }
-      } catch (err) {
-        console.error('Demo init failed:', err);
+      if (getStoredToken()) {
+        await refreshProfile();
+      } else {
+        setIsLoading(false);
       }
-      await refreshProfile();
     };
 
     init();
-  }, [refreshProfile, refreshAttendance]);
+  }, [refreshProfile]);
 
-  const login = async (email: string, password = 'password123') => {
+  const login = async (email: string, password: string) => {
     setIsLoading(true);
     try {
       const res = await api.login({ email, password });
@@ -110,18 +98,11 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     if (roleOrEmail.includes('@')) {
       return switchRole(roleOrEmail);
     }
-    const matched = demoUsers.find((d) => d.role === roleOrEmail);
+    const matched = demoUsers.find((d) => d.role === roleOrEmail || d.email === roleOrEmail);
     if (matched) {
       return switchRole(matched.email);
     }
-    const roleEmailMap: Record<string, string> = {
-      SUPER_ADMIN: 'admin@mcgate.tech',
-      ADMIN: 'hr@mcgate.tech',
-      MANAGER: 'lead.eng@mcgate.tech',
-      EMPLOYEE: 'john.doe@mcgate.tech'
-    };
-    const targetEmail = roleEmailMap[roleOrEmail] || 'admin@mcgate.tech';
-    return switchRole(targetEmail);
+    return switchRole('superuser@mcgate.tech');
   };
 
   const updateUserAvatar = async (avatarUrl: string) => {

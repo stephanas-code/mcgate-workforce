@@ -155,6 +155,7 @@ export interface ProjectDocument {
   file_extension: string;
   mime_type: string;
   file_data?: string;
+  extracted_text?: string;
   uploaded_by_user_id: number;
   uploaded_by_name?: string;
   created_at: string;

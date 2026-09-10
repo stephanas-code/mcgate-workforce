@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { X, ShieldAlert, CheckCircle2, AlertTriangle, Clock } from 'lucide-react';
+import { Modal } from './Modal.tsx';
 import { api } from '../api.ts';
 
 interface AttendanceCorrectionModalProps {
@@ -54,8 +55,8 @@ export const AttendanceCorrectionModal: React.FC<AttendanceCorrectionModalProps>
   const formattedIn = new Date(record.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-slate-900/60 backdrop-blur-xs p-4">
-      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full max-w-lg overflow-hidden animate-in fade-in zoom-in-95">
+    <Modal isOpen={isOpen && Boolean(record)} onClose={onClose} maxWidth="max-w-lg">
+      <div className="bg-white rounded-xl shadow-2xl border border-slate-200 w-full overflow-hidden">
         <div className="px-5 py-4 border-b border-slate-100 flex items-center justify-between bg-slate-50">
           <div className="flex items-center gap-2">
             <ShieldAlert className="w-5 h-5 text-purple-600" />
@@ -149,6 +150,6 @@ export const AttendanceCorrectionModal: React.FC<AttendanceCorrectionModalProps>
           </div>
         </form>
       </div>
-    </div>
+    </Modal>
   );
 };

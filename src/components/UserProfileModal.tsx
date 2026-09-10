@@ -15,9 +15,9 @@ import {
   Briefcase,
   Phone,
   Building,
-  Sparkles,
   RefreshCw
 } from 'lucide-react';
+import { Modal } from './Modal.tsx';
 import { useAuth } from '../context/AuthContext.tsx';
 import { api } from '../api.ts';
 
@@ -205,16 +205,10 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm transition-all"
-      onClick={onClose}
-    >
-      <div
-        className="bg-white w-full max-w-xl rounded-2xl shadow-2xl border border-indigo-100 overflow-hidden flex flex-col max-h-[92vh] animate-in fade-in zoom-in-95 duration-150"
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* Header with vibrant colorful gradient banner */}
-        <div className="relative bg-gradient-to-r from-indigo-600 via-purple-600 to-pink-500 p-6 text-white shrink-0">
+    <Modal isOpen={isOpen} onClose={onClose} maxWidth="max-w-xl">
+      <div className="bg-white w-full rounded-2xl shadow-2xl border border-indigo-100 overflow-hidden flex flex-col max-h-[92vh]">
+        {/* Header with professional McGate corporate banner */}
+        <div className="relative bg-gradient-to-r from-slate-900 via-indigo-950 to-blue-900 p-6 text-white shrink-0">
           <button
             onClick={onClose}
             className="absolute top-4 right-4 p-1.5 rounded-full bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
@@ -224,14 +218,14 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           </button>
 
           <div className="flex items-center gap-3">
-            <div className="p-2.5 rounded-xl bg-white/20 backdrop-blur-md text-white shadow-inner">
-              <Sparkles className="w-6 h-6" />
+            <div className="p-2.5 rounded-xl bg-white/10 backdrop-blur-md text-blue-300 border border-white/10 shadow-inner">
+              <ShieldCheck className="w-6 h-6" />
             </div>
             <div>
               <h2 className="text-xl font-bold text-white tracking-tight">
                 Account & Security Settings
               </h2>
-              <p className="text-xs text-indigo-100 mt-0.5">
+              <p className="text-xs text-blue-200/80 mt-0.5">
                 Manage your teammate profile picture, details, and login credentials
               </p>
             </div>
@@ -282,8 +276,8 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
                 </div>
               )}
 
-              {/* Profile Photo Uploader */}
-              <div className="bg-gradient-to-br from-indigo-50/60 via-purple-50/40 to-pink-50/30 p-5 rounded-2xl border border-indigo-100 flex flex-col sm:flex-row items-center gap-5">
+              {/* Avatar Upload Banner */}
+              <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 flex flex-col sm:flex-row items-center gap-5">
                 {/* Avatar Preview */}
                 <div
                   className="relative group cursor-pointer shrink-0"
@@ -626,6 +620,6 @@ export const UserProfileModal: React.FC<UserProfileModalProps> = ({
           )}
         </div>
       </div>
-    </div>
+    </Modal>
   );
 };

@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Search, X, CheckSquare, Briefcase, FolderKanban, Users, User, ArrowRight } from 'lucide-react';
 import { api } from '../api.ts';
 
@@ -42,9 +43,13 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     }
   }, [isOpen]);
 
-  // Global Escape key handler to close the search modal
+  // Global Escape key handler and body scroll lock
   useEffect(() => {
     if (!isOpen) return;
+
+    const prevOverflow = document.body.style.overflow;
+    document.body.style.overflow = 'hidden';
+
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
         e.preventDefault();
@@ -52,7 +57,10 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      document.body.style.overflow = prevOverflow;
+      window.removeEventListener('keydown', handleKeyDown);
+    };
   }, [isOpen, onClose]);
 
   // Debounced search query
@@ -96,7 +104,9 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
     results.projects.length +
     results.teams.length;
 
-  return (
+  if (!isOpen || typeof document === 'undefined') return null;
+
+  return createPortal(
     <div
       id="global-search-modal-backdrop"
       onClick={(e) => {
@@ -358,6 +368,7 @@ export const GlobalSearchModal: React.FC<GlobalSearchModalProps> = ({
           </button>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
