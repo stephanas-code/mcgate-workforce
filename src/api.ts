@@ -278,6 +278,10 @@ export const api = {
       method: 'POST',
       body: JSON.stringify({ newPassword: newPassword || 'password123' })
     }),
+  deleteEmployee: (employeeId: number) =>
+    request<{ success: boolean; message: string }>(`/api/employees/${employeeId}`, {
+      method: 'DELETE'
+    }),
   getDbLogs: () => request<any>('/api/system/db-logs'),
 
   // Reports

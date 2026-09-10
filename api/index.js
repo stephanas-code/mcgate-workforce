@@ -3349,6 +3349,53 @@ router6.post("/employees/:id/reset-password", authenticateToken, requireRoles("S
     res.status(500).json({ error: "Failed to reset teammate password." });
   }
 });
+router6.delete("/employees/:id", authenticateToken, requireRoles("SUPER_ADMIN", "ADMIN"), async (req, res) => {
+  try {
+    const employeeId = Number(req.params.id);
+    const emp = await queryOne(`
+      SELECT e.id, e.user_id, e.first_name, e.last_name, e.employee_code, u.email, u.role
+      FROM employees e
+      JOIN users u ON u.id = e.user_id
+      WHERE e.id = ?
+    `, [employeeId]);
+    if (!emp) {
+      return res.status(404).json({ error: "Employee not found." });
+    }
+    if (req.user?.id === emp.user_id || req.user?.employeeId === emp.id) {
+      return res.status(400).json({ error: "You cannot delete your own active account." });
+    }
+    if (emp.role === "SUPER_ADMIN" && req.user?.role !== "SUPER_ADMIN") {
+      return res.status(403).json({ error: "Only a Super Administrator can delete another Super Administrator." });
+    }
+    await execute("UPDATE departments SET head_employee_id = NULL WHERE head_employee_id = ?", [employeeId]);
+    await execute("UPDATE teams SET team_lead_id = NULL WHERE team_lead_id = ?", [employeeId]);
+    await execute("UPDATE projects SET manager_id = NULL WHERE manager_id = ?", [employeeId]);
+    await execute("UPDATE assignments SET lead_employee_id = NULL WHERE lead_employee_id = ?", [employeeId]);
+    await execute("UPDATE tasks SET assigned_employee_id = NULL WHERE assigned_employee_id = ?", [employeeId]);
+    await execute("UPDATE employees SET manager_id = NULL WHERE manager_id = ?", [employeeId]);
+    await execute("DELETE FROM attendance WHERE employee_id = ?", [employeeId]);
+    await execute("DELETE FROM work_sessions WHERE employee_id = ?", [employeeId]);
+    await execute("DELETE FROM employees WHERE id = ?", [employeeId]);
+    await execute("DELETE FROM users WHERE id = ?", [emp.user_id]);
+    await logAudit({
+      userId: req.user.id,
+      userName: req.user.fullName || req.user.email,
+      userRole: req.user.role,
+      action: "USER_DELETED",
+      resource: "EMPLOYEE",
+      resourceId: employeeId,
+      ipAddress: req.ip,
+      afterValue: `Deleted employee ${emp.employee_code} (${emp.first_name} ${emp.last_name}, ${emp.email})`
+    });
+    res.json({
+      success: true,
+      message: `Colleague ${emp.first_name} ${emp.last_name} (${emp.employee_code}) deleted successfully.`
+    });
+  } catch (err) {
+    console.error("Delete employee error:", err);
+    res.status(500).json({ error: err.message || "Failed to delete employee." });
+  }
+});
 var teamRoutes_default = router6;
 
 // server/routes/reportRoutes.ts

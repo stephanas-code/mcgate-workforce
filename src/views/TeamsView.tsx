@@ -17,7 +17,8 @@ import {
   RefreshCw,
   Key,
   Database,
-  Activity
+  Activity,
+  Trash2
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
@@ -63,6 +64,7 @@ export const TeamsView: React.FC = () => {
   const [isDbModalOpen, setIsDbModalOpen] = useState(false);
   const [dbLogsData, setDbLogsData] = useState<any | null>(null);
   const [isLoadingDbLogs, setIsLoadingDbLogs] = useState(false);
+  const [deletingId, setDeletingId] = useState<number | null>(null);
   const newEmpPhotoRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role || 'SUPER_ADMIN';
@@ -163,6 +165,40 @@ export const TeamsView: React.FC = () => {
       });
     } finally {
       setResettingId(null);
+    }
+  };
+
+  const handleDeleteEmployee = async (emp: any) => {
+    if (emp.id === user?.employeeId || emp.user_id === user?.id) {
+      alert('You cannot delete your own active account.');
+      return;
+    }
+    const confirmName = `${emp.first_name} ${emp.last_name}`;
+    if (!window.confirm(`Are you sure you want to permanently delete colleague ${confirmName} (${emp.employee_code || emp.email})?\n\nThis will remove their corporate account, credentials, and workforce directory records.`)) {
+      return;
+    }
+    setDeletingId(emp.id);
+    setActionBanner(null);
+    try {
+      await api.deleteEmployee(emp.id);
+      try {
+        const cached = getCachedEmployees();
+        const updated = cached.filter((c: any) => c.id !== emp.id && c.email?.toLowerCase() !== emp.email?.toLowerCase());
+        localStorage.setItem('mcgate_custom_employees', JSON.stringify(updated));
+      } catch {}
+      setEmployees(prev => prev.filter(e => e.id !== emp.id && e.email?.toLowerCase() !== emp.email?.toLowerCase()));
+      setActionBanner({
+        type: 'success',
+        message: `Colleague ${confirmName} (${emp.employee_code || emp.email}) has been permanently deleted.`
+      });
+      await loadData();
+    } catch (err: any) {
+      setActionBanner({
+        type: 'error',
+        message: err?.message || 'Failed to delete colleague.'
+      });
+    } finally {
+      setDeletingId(null);
     }
   };
 
@@ -547,7 +583,7 @@ export const TeamsView: React.FC = () => {
                           )}
                         </td>
                         <td className="px-4 py-3 text-right">
-                          <div className="flex items-center justify-end gap-2">
+                          <div className="flex items-center justify-end gap-1.5">
                             <button
                               onClick={() => handleOpenPhotoModal(e)}
                               className="px-2.5 py-1.5 rounded-lg bg-indigo-50 hover:bg-indigo-100 text-indigo-700 text-xs font-bold transition flex items-center gap-1 cursor-pointer"
@@ -565,6 +601,17 @@ export const TeamsView: React.FC = () => {
                               >
                                 <Key className="w-3.5 h-3.5 text-amber-600" />
                                 <span>{resettingId === e.id ? 'Resetting...' : 'Reset Pwd'}</span>
+                              </button>
+                            )}
+                            {isAdmin && (e.user_id !== user?.id && e.id !== user?.employeeId) && (
+                              <button
+                                onClick={() => handleDeleteEmployee(e)}
+                                disabled={deletingId === e.id}
+                                className="px-2.5 py-1.5 rounded-lg bg-rose-50 hover:bg-rose-100 text-rose-700 border border-rose-200 text-xs font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                                title="Permanently delete this colleague account"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-600" />
+                                <span>{deletingId === e.id ? 'Deleting...' : 'Delete'}</span>
                               </button>
                             )}
                           </div>
