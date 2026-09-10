@@ -11,6 +11,7 @@ export interface User {
   lastName?: string;
   fullName?: string;
   jobTitle?: string;
+  avatarUrl?: string;
   departmentId?: number;
   teamId?: number;
   departmentName?: string;
@@ -217,6 +218,7 @@ export interface EmployeeItem {
   status: string;
   job_title: string;
   phone: string | null;
+  avatarUrl?: string;
   department_id: number | null;
   team_id: number | null;
   department_name: string | null;

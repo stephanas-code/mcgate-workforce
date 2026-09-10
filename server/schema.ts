@@ -263,6 +263,16 @@ export async function initDatabase(): Promise<void> {
     await seedInitialData();
   }
 
+  // Remove all demo accounts, leaving ONLY the Super Admin
+  try {
+    await executeBatch([
+      "DELETE FROM users WHERE role != 'SUPER_ADMIN';",
+      "DELETE FROM employees WHERE user_id NOT IN (SELECT id FROM users);"
+    ]);
+  } catch (e) {
+    console.error('Failed to clean demo accounts:', e);
+  }
+
   // Clear all mockup operational records so the system is clean, realtime, and deployment ready
   await clearAllMockData();
 }
@@ -341,92 +351,25 @@ export async function seedInitialData(): Promise<void> {
     ]);
   }
 
-  // 4. Initial Users & Employees
-  // Roles: SUPER_ADMIN, ADMIN, MANAGER, EMPLOYEE
+  // 4. Initial Users & Employees: ONLY Super Admin accounts
   const usersToCreate = [
     {
       email: 'admin@mcgate.tech',
       role: 'SUPER_ADMIN',
       firstName: 'Marcus',
       lastName: 'Vance',
-      jobTitle: 'Chief Technology Officer & Director',
+      jobTitle: 'Super Administrator & Director',
       code: 'MGT-001',
       deptId: 1,
       teamId: 1,
       phone: '+49 30 555-0100',
     },
     {
-      email: 'hr@mcgate.tech',
-      role: 'ADMIN',
-      firstName: 'Elena',
-      lastName: 'Rostova',
-      jobTitle: 'Head of Human Resources',
-      code: 'MGT-002',
-      deptId: 6,
-      teamId: 5,
-      phone: '+49 30 555-0102',
-    },
-    {
-      email: 'lead.eng@mcgate.tech',
-      role: 'MANAGER',
-      firstName: 'David',
-      lastName: 'Chen',
-      jobTitle: 'Engineering Lead & Solutions Architect',
-      code: 'MGT-003',
-      deptId: 1,
-      teamId: 1,
-      phone: '+49 30 555-0103',
-    },
-    {
-      email: 'lead.sec@mcgate.tech',
-      role: 'MANAGER',
-      firstName: 'Sarah',
-      lastName: 'Al-Mansoor',
-      jobTitle: 'Security Operations Lead',
-      code: 'MGT-004',
-      deptId: 2,
-      teamId: 3,
-      phone: '+49 30 555-0104',
-    },
-    {
-      email: 'john.doe@mcgate.tech',
-      role: 'EMPLOYEE',
-      firstName: 'John',
-      lastName: 'Doe',
-      jobTitle: 'Senior Systems Engineer',
-      code: 'MGT-005',
-      deptId: 1,
-      teamId: 1,
-      phone: '+49 30 555-0105',
-    },
-    {
-      email: 'jane.smith@mcgate.tech',
-      role: 'EMPLOYEE',
-      firstName: 'Jane',
-      lastName: 'Smith',
-      jobTitle: 'Cloud Security Analyst',
-      code: 'MGT-006',
-      deptId: 2,
-      teamId: 3,
-      phone: '+49 30 555-0106',
-    },
-    {
-      email: 'alex.rivera@mcgate.tech',
-      role: 'EMPLOYEE',
-      firstName: 'Alex',
-      lastName: 'Rivera',
-      jobTitle: 'DevOps & Site Reliability Engineer',
-      code: 'MGT-007',
-      deptId: 3,
-      teamId: 4,
-      phone: '+49 30 555-0107',
-    },
-    {
       email: 'stephenosanebi@gmail.com', // Primary platform owner
       role: 'SUPER_ADMIN',
       firstName: 'Stephen',
       lastName: 'Osanebi',
-      jobTitle: 'Principal Platform Architect',
+      jobTitle: 'Principal Super Admin',
       code: 'MGT-000',
       deptId: 1,
       teamId: 1,

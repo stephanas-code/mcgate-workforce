@@ -71,6 +71,36 @@ export const api = {
       body: JSON.stringify(payload)
     }),
 
+  changePassword: (payload: { currentPassword: string; newPassword: string }) =>
+    request<{ success?: boolean; message: string }>('/api/auth/change-password', {
+      method: 'POST',
+      body: JSON.stringify(payload)
+    }),
+
+  updateProfileAvatar: (avatarUrl: string) =>
+    request<{ success: boolean; avatarUrl: string; user?: any; message: string }>('/api/auth/avatar', {
+      method: 'POST',
+      body: JSON.stringify({ avatarUrl })
+    }),
+
+  updateMyProfile: (payload: { firstName?: string; lastName?: string; phone?: string; jobTitle?: string; avatarUrl?: string }) =>
+    request<{ success: boolean; user: any; message: string }>('/api/auth/profile', {
+      method: 'PUT',
+      body: JSON.stringify(payload)
+    }),
+
+  updateEmployeeAvatar: (employeeId: number, avatarUrl: string) =>
+    request<{ success: boolean; avatarUrl: string; message: string }>(`/api/employees/${employeeId}/avatar`, {
+      method: 'POST',
+      body: JSON.stringify({ avatarUrl })
+    }),
+
+  updateEmployee: (employeeId: number, data: any) =>
+    request<{ success: boolean; message: string }>(`/api/employees/${employeeId}`, {
+      method: 'PUT',
+      body: JSON.stringify(data)
+    }),
+
   // Attendance
   clockIn: (payload?: string | { location?: string; timezone?: string }) => {
     const body = typeof payload === 'string' ? { location: payload } : (payload || {});

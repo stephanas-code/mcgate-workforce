@@ -15,6 +15,7 @@ export interface AuthenticatedUser {
   lastName?: string;
   fullName?: string;
   jobTitle?: string;
+  avatarUrl?: string;
   departmentId?: number;
   teamId?: number;
   departmentName?: string;
@@ -49,6 +50,7 @@ export async function getUserProfileById(userId: number): Promise<AuthenticatedU
     first_name?: string;
     last_name?: string;
     job_title?: string;
+    avatar_url?: string;
     department_id?: number;
     team_id?: number;
     dept_name?: string;
@@ -56,7 +58,7 @@ export async function getUserProfileById(userId: number): Promise<AuthenticatedU
   }>(`
     SELECT 
       u.id, u.email, u.role, u.status,
-      e.id as emp_id, e.employee_code, e.first_name, e.last_name, e.job_title,
+      e.id as emp_id, e.employee_code, e.first_name, e.last_name, e.job_title, e.avatar_url,
       e.department_id, e.team_id,
       d.name as dept_name,
       t.name as team_name
@@ -80,6 +82,7 @@ export async function getUserProfileById(userId: number): Promise<AuthenticatedU
     lastName: row.last_name,
     fullName: row.first_name ? `${row.first_name} ${row.last_name}` : row.email,
     jobTitle: row.job_title,
+    avatarUrl: row.avatar_url,
     departmentId: row.department_id,
     teamId: row.team_id,
     departmentName: row.dept_name,

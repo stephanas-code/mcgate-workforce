@@ -106,7 +106,7 @@ router.post('/switch-demo', async (req, res) => {
   }
 });
 
-// List demo users for quick role testing
+// List demo users for quick role testing - only returns Super Admin
 router.get('/demo-users', async (_req, res) => {
   try {
     const list = await queryAll<{
@@ -125,13 +125,8 @@ router.get('/demo-users', async (_req, res) => {
       FROM users u
       LEFT JOIN employees e ON e.user_id = u.id
       LEFT JOIN departments d ON d.id = e.department_id
-      ORDER BY 
-        CASE u.role 
-          WHEN 'SUPER_ADMIN' THEN 1 
-          WHEN 'ADMIN' THEN 2 
-          WHEN 'MANAGER' THEN 3 
-          ELSE 4 
-        END, u.id ASC
+      WHERE u.role = 'SUPER_ADMIN'
+      ORDER BY u.id ASC
     `);
 
     res.json(list);
@@ -142,7 +137,138 @@ router.get('/demo-users', async (_req, res) => {
 
 // Get current logged-in user profile
 router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
-  res.json({ user: req.user });
+  const profile = await getUserProfileById(req.user!.id);
+  res.json({ user: profile || req.user });
+});
+
+// Update Profile Picture / Avatar
+router.post('/avatar', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { avatarUrl } = req.body;
+    if (!avatarUrl || typeof avatarUrl !== 'string') {
+      return res.status(400).json({ error: 'A valid image URL or base64 data string is required' });
+    }
+
+    // Check if employee record exists for this user
+    let emp = await queryOne<{ id: number }>('SELECT id FROM employees WHERE user_id = ?', [req.user!.id]);
+    const now = new Date().toISOString();
+
+    if (!emp) {
+      // Create employee record if missing
+      const empCode = `MGT-${String(req.user!.id).padStart(3, '0')}`;
+      const { lastInsertRowid } = await execute(`
+        INSERT INTO employees (user_id, employee_code, first_name, last_name, avatar_url, job_title, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?)
+      `, [req.user!.id, empCode, req.user!.firstName || 'Super', req.user!.lastName || 'Admin', avatarUrl, 'Super Administrator', now]);
+      emp = { id: lastInsertRowid };
+    } else {
+      await execute('UPDATE employees SET avatar_url = ? WHERE id = ?', [avatarUrl, emp.id]);
+    }
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'AVATAR_UPDATE',
+      resource: 'EMPLOYEE',
+      resourceId: emp.id,
+      ipAddress: req.ip,
+      afterValue: 'Updated profile picture photo'
+    });
+
+    const updatedProfile = await getUserProfileById(req.user!.id);
+
+    res.json({
+      success: true,
+      avatarUrl,
+      user: updatedProfile,
+      message: 'Profile picture updated successfully'
+    });
+  } catch (err: any) {
+    console.error('Avatar update failed:', err);
+    res.status(500).json({ error: 'Failed to update profile picture' });
+  }
+});
+
+// Update Profile Details (First Name, Last Name, Phone, Job Title)
+router.put('/profile', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { firstName, lastName, phone, jobTitle, avatarUrl } = req.body;
+    const now = new Date().toISOString();
+
+    const emp = await queryOne<{ id: number }>('SELECT id FROM employees WHERE user_id = ?', [req.user!.id]);
+    if (emp) {
+      await execute(`
+        UPDATE employees 
+        SET first_name = COALESCE(?, first_name),
+            last_name = COALESCE(?, last_name),
+            phone = COALESCE(?, phone),
+            job_title = COALESCE(?, job_title),
+            avatar_url = COALESCE(?, avatar_url)
+        WHERE id = ?
+      `, [firstName, lastName, phone, jobTitle, avatarUrl, emp.id]);
+    } else {
+      const empCode = `MGT-${String(req.user!.id).padStart(3, '0')}`;
+      await execute(`
+        INSERT INTO employees (user_id, employee_code, first_name, last_name, phone, job_title, avatar_url, created_at)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+      `, [req.user!.id, empCode, firstName || 'Admin', lastName || 'User', phone || '', jobTitle || 'Administrator', avatarUrl || null, now]);
+    }
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'PROFILE_UPDATE',
+      resource: 'USER',
+      resourceId: req.user!.id,
+      ipAddress: req.ip,
+      afterValue: `Updated user profile details for ${req.user!.email}`
+    });
+
+    const updatedProfile = await getUserProfileById(req.user!.id);
+    res.json({ success: true, user: updatedProfile, message: 'Profile updated successfully' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to update profile information' });
+  }
+});
+
+// Change Password (Dedicated endpoint)
+router.post('/change-password', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const { currentPassword, newPassword } = req.body;
+    if (!currentPassword || !newPassword) {
+      return res.status(400).json({ error: 'Current password and new password are both required.' });
+    }
+    if (newPassword.length < 6) {
+      return res.status(400).json({ error: 'New password must be at least 6 characters in length.' });
+    }
+
+    const user = await queryOne<{ password_hash: string }>('SELECT password_hash FROM users WHERE id = ?', [req.user!.id]);
+    if (!user || !bcrypt.compareSync(currentPassword, user.password_hash)) {
+      return res.status(400).json({ error: 'Current password is incorrect. Please verify and try again.' });
+    }
+
+    const newHash = bcrypt.hashSync(newPassword, 10);
+    const now = new Date().toISOString();
+    await execute('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?', [newHash, now, req.user!.id]);
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'PASSWORD_CHANGE',
+      resource: 'USER',
+      resourceId: req.user!.id,
+      ipAddress: req.ip,
+      afterValue: 'Password changed successfully by user'
+    });
+
+    res.json({ success: true, message: 'Password has been updated successfully.' });
+  } catch (err) {
+    console.error('Change password failed:', err);
+    res.status(500).json({ error: 'Failed to change password. Please try again.' });
+  }
 });
 
 // Forgot password request (Generates a secure recovery simulation)

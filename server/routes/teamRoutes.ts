@@ -165,6 +165,7 @@ router.get('/employees', authenticateToken, async (_req, res) => {
     res.json(employees.map(e => ({
       ...e,
       fullName: `${e.first_name} ${e.last_name}`,
+      avatarUrl: (e as any).avatar_url,
       isClockedInToday: Boolean(e.today_clock_in),
       isCurrentlyActive: Boolean(e.today_clock_in && !e.today_clock_out)
     })));
@@ -173,7 +174,106 @@ router.get('/employees', authenticateToken, async (_req, res) => {
   }
 });
 
-// 4. Create new Employee + User (Admins / HR only)
+// 4. Update Teammate / Employee Avatar (Allow teammates or admins to upload profile picture)
+router.post('/employees/:id/avatar', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const employeeId = Number(req.params.id);
+    const { avatarUrl } = req.body;
+    if (!avatarUrl) {
+      return res.status(400).json({ error: 'avatarUrl is required.' });
+    }
+
+    const emp = await queryOne<{ id: number; user_id: number; first_name: string; last_name: string }>(
+      'SELECT id, user_id, first_name, last_name FROM employees WHERE id = ?',
+      [employeeId]
+    );
+
+    if (!emp) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    // Permission check: user can edit their own profile, or admins/managers can update teammates
+    const isSelf = req.user?.employeeId === employeeId || req.user?.id === emp.user_id;
+    const isPrivileged = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'ADMIN' || req.user?.role === 'MANAGER';
+    if (!isSelf && !isPrivileged) {
+      return res.status(403).json({ error: 'Forbidden: You can only update your own profile picture.' });
+    }
+
+    await execute('UPDATE employees SET avatar_url = ? WHERE id = ?', [avatarUrl, employeeId]);
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'TEAMMATE_AVATAR_UPDATE',
+      resource: 'EMPLOYEE',
+      resourceId: employeeId,
+      ipAddress: req.ip,
+      afterValue: `Updated profile picture photo for ${emp.first_name} ${emp.last_name}`
+    });
+
+    res.json({
+      success: true,
+      avatarUrl,
+      message: 'Teammate profile picture updated successfully'
+    });
+  } catch (err: any) {
+    console.error('Teammate avatar update failed:', err);
+    res.status(500).json({ error: 'Failed to update teammate profile picture' });
+  }
+});
+
+// 5. Update Employee Details
+router.put('/employees/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const employeeId = Number(req.params.id);
+    const { firstName, lastName, phone, jobTitle, departmentId, teamId, avatarUrl } = req.body;
+
+    const emp = await queryOne<{ id: number; user_id: number; first_name: string; last_name: string }>(
+      'SELECT id, user_id, first_name, last_name FROM employees WHERE id = ?',
+      [employeeId]
+    );
+
+    if (!emp) {
+      return res.status(404).json({ error: 'Employee not found.' });
+    }
+
+    const isSelf = req.user?.employeeId === employeeId || req.user?.id === emp.user_id;
+    const isPrivileged = req.user?.role === 'SUPER_ADMIN' || req.user?.role === 'ADMIN';
+    if (!isSelf && !isPrivileged) {
+      return res.status(403).json({ error: 'Forbidden.' });
+    }
+
+    await execute(`
+      UPDATE employees
+      SET first_name = COALESCE(?, first_name),
+          last_name = COALESCE(?, last_name),
+          phone = COALESCE(?, phone),
+          job_title = COALESCE(?, job_title),
+          department_id = COALESCE(?, department_id),
+          team_id = COALESCE(?, team_id),
+          avatar_url = COALESCE(?, avatar_url)
+      WHERE id = ?
+    `, [firstName, lastName, phone, jobTitle, departmentId, teamId, avatarUrl, employeeId]);
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'EMPLOYEE_UPDATED',
+      resource: 'EMPLOYEE',
+      resourceId: employeeId,
+      ipAddress: req.ip,
+      afterValue: `Updated details for ${firstName || emp.first_name} ${lastName || emp.last_name}`
+    });
+
+    res.json({ success: true, message: 'Employee updated successfully' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to update employee.' });
+  }
+});
+
+// 6. Create new Employee + User (Admins / HR only)
 router.post('/employees', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const {

@@ -107,36 +107,36 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ onStatusUpdated 
   });
 
   return (
-    <div id="workforce-attendance-card" className="bg-white rounded-xl shadow-xs border border-slate-200 overflow-hidden">
+    <div id="workforce-attendance-card" className="bg-white rounded-2xl shadow-md shadow-indigo-100/50 border border-indigo-100 overflow-hidden">
       {/* Header Banner */}
-      <div className="px-5 py-4 border-b border-slate-100 flex flex-wrap items-center justify-between gap-3 bg-slate-50/70">
-        <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 rounded-lg bg-blue-100 text-blue-700 flex items-center justify-center">
-            <Clock className="w-4 h-4" />
+      <div className="px-6 py-4.5 border-b border-indigo-100 flex flex-wrap items-center justify-between gap-3 bg-gradient-to-r from-slate-50 via-indigo-50/30 to-purple-50/20">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-xs">
+            <Clock className="w-5 h-5" />
           </div>
           <div>
-            <h3 className="text-sm font-bold text-slate-900">Workforce Attendance Console</h3>
-            <p className="text-xs text-slate-500">{todayDateStr}</p>
+            <h3 className="text-sm font-extrabold text-slate-900 font-display">Workforce Attendance Console</h3>
+            <p className="text-xs text-slate-500 font-medium">{todayDateStr}</p>
           </div>
         </div>
 
         {/* Status Pill */}
         <div>
           {!isClockedIn && (
-            <span id="attendance-status-pending" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-amber-100 text-amber-900 border border-amber-300">
-              <span className="w-2 h-2 rounded-full bg-amber-600" />
+            <span id="attendance-status-pending" className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-amber-50 to-orange-50 text-amber-900 border border-amber-300 shadow-2xs font-display">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-ping" />
               Clock-In Mandatory
             </span>
           )}
           {isClockedIn && !isClockedOut && (
-            <span id="attendance-status-clocked-in" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-emerald-100 text-emerald-900 border border-emerald-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-700" />
+            <span id="attendance-status-clocked-in" className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-emerald-50 to-teal-50 text-emerald-900 border border-emerald-300 shadow-2xs font-display">
+              <CheckCircle2 className="w-4 h-4 text-emerald-600" />
               Clocked In • {formattedInShort}
             </span>
           )}
           {isClockedIn && isClockedOut && (
-            <span id="attendance-status-completed" className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-blue-100 text-blue-900 border border-blue-300">
-              <CheckCircle2 className="w-3.5 h-3.5 text-blue-700" />
+            <span id="attendance-status-completed" className="inline-flex items-center gap-1.5 px-3.5 py-1.5 rounded-full text-xs font-black bg-gradient-to-r from-indigo-50 to-blue-50 text-indigo-900 border border-indigo-300 shadow-2xs font-display">
+              <CheckCircle2 className="w-4 h-4 text-indigo-600" />
               Clock-Out Recorded • {formattedOutShort}
             </span>
           )}
@@ -267,14 +267,14 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ onStatusUpdated 
           </div>
 
           {/* Center Column: Core Actions (Clock-In / Clock-Out) */}
-          <div className="flex flex-col items-center justify-center p-4 bg-slate-50 rounded-xl border border-slate-100 text-center space-y-3">
+          <div className="flex flex-col items-center justify-center p-5 bg-gradient-to-br from-indigo-50/40 via-purple-50/20 to-slate-50/50 rounded-2xl border border-indigo-100/80 text-center space-y-3">
             {!isClockedIn ? (
               <div className="w-full">
                 <button
                   id="record-clock-in-btn"
                   onClick={handleClockIn}
                   disabled={isSubmitting}
-                  className="w-full py-3 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-bold rounded-lg shadow-sm hover:shadow transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3.5 px-5 bg-gradient-to-r from-emerald-600 via-teal-600 to-emerald-600 hover:from-emerald-700 hover:to-teal-700 text-white text-xs font-extrabold rounded-xl shadow-md shadow-emerald-600/25 hover:shadow-lg transition-all flex items-center justify-center gap-2.5 cursor-pointer disabled:opacity-50 font-display tracking-wide"
                 >
                   {isSubmitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
@@ -283,18 +283,18 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ onStatusUpdated 
                   )}
                   <span>RECORD CLOCK-IN TIMESTAMP</span>
                 </button>
-                <div className="text-[11px] text-slate-500 mt-2">
-                  Captures official timestamp aligned to {details.city} ({details.offset}).
+                <div className="text-[11px] text-slate-500 font-medium mt-2">
+                  Captures official arrival timestamp aligned to {details.city} ({details.offset}).
                 </div>
               </div>
             ) : !isClockedOut ? (
-              <div className="w-full space-y-2.5">
-                <div className="p-2.5 bg-emerald-50 border border-emerald-200 rounded-lg text-left">
+              <div className="w-full space-y-3">
+                <div className="p-3 bg-emerald-50/90 border border-emerald-200 rounded-xl text-left shadow-2xs">
                   <div className="flex items-center justify-between">
-                    <span className="text-[11px] font-bold text-emerald-900 uppercase">Clock-In Timestamp</span>
-                    <span className="text-[10px] font-semibold px-1.5 py-0.5 rounded bg-emerald-200/70 text-emerald-800">Recorded</span>
+                    <span className="text-[11px] font-extrabold text-emerald-900 uppercase font-display">Clock-In Timestamp</span>
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-200 text-emerald-900">Recorded</span>
                   </div>
-                  <div className="font-mono text-sm font-bold text-emerald-800 mt-0.5">
+                  <div className="font-mono text-base font-black text-emerald-800 mt-1">
                     {formattedIn}
                   </div>
                 </div>
@@ -303,23 +303,25 @@ export const AttendanceCard: React.FC<AttendanceCardProps> = ({ onStatusUpdated 
                   id="record-clock-out-btn"
                   onClick={handleClockOut}
                   disabled={isSubmitting}
-                  className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-900 text-white text-sm font-semibold rounded-lg shadow-sm transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                  className="w-full py-3 px-4 bg-gradient-to-r from-slate-800 to-indigo-900 hover:from-slate-900 hover:to-indigo-950 text-white text-xs font-bold rounded-xl shadow-md shadow-slate-900/20 transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 font-display"
                 >
                   {isSubmitting ? (
                     <RefreshCw className="w-4 h-4 animate-spin" />
                   ) : (
-                    <Clock className="w-4 h-4" />
+                    <Clock className="w-4 h-4 text-pink-300" />
                   )}
                   <span>RECORD CLOCK-OUT TIMESTAMP (OPTIONAL)</span>
                 </button>
-                <div className="text-[11px] text-slate-500">
+                <div className="text-[11px] text-slate-500 font-medium">
                   Clock-out is optional. Missing clock-outs will not be penalized.
                 </div>
               </div>
             ) : (
               <div className="w-full py-2 text-center text-xs text-slate-600">
-                <CheckCircle2 className="w-8 h-8 text-emerald-600 mx-auto mb-1.5" />
-                <span className="font-semibold text-slate-800 text-sm">Attendance Timestamps Recorded</span>
+                <div className="w-12 h-12 rounded-2xl bg-emerald-100 text-emerald-700 flex items-center justify-center mx-auto mb-2 shadow-xs">
+                  <CheckCircle2 className="w-7 h-7" />
+                </div>
+                <span className="font-extrabold text-slate-900 text-sm font-display">Attendance Timestamps Recorded</span>
                 <p className="text-[11px] text-slate-500 mt-0.5">Both arrival and departure timestamps logged.</p>
               </div>
             )}

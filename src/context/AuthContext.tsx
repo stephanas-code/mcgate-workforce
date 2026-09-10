@@ -13,6 +13,7 @@ interface AuthContextType {
   logout: () => void;
   refreshProfile: () => Promise<void>;
   refreshAttendance: () => Promise<void>;
+  updateUserAvatar: (avatarUrl: string) => Promise<void>;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -123,6 +124,16 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
     return switchRole(targetEmail);
   };
 
+  const updateUserAvatar = async (avatarUrl: string) => {
+    const res = await api.updateProfileAvatar(avatarUrl);
+    if (res.user) {
+      setUser(res.user);
+    } else if (user) {
+      setUser({ ...user, avatarUrl });
+    }
+    await refreshProfile();
+  };
+
   const logout = () => {
     clearStoredToken();
     setUser(null);
@@ -141,7 +152,8 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
         switchDemoRole,
         logout,
         refreshProfile,
-        refreshAttendance
+        refreshAttendance,
+        updateUserAvatar
       }}
     >
       {children}

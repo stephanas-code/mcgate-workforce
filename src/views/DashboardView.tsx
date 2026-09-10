@@ -66,33 +66,37 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
 
   return (
     <div className="space-y-6">
-      {/* Welcome Banner */}
-      <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 bg-slate-900 text-white p-6 rounded-2xl shadow-sm border border-slate-800">
-        <div>
-          <div className="flex items-center gap-2 mb-1">
-            <span className="text-xs font-bold uppercase tracking-widest text-blue-400">
+      {/* Welcome Banner with modern gradient & lively styling */}
+      <div className="flex flex-col md:flex-row md:items-center justify-between gap-5 bg-gradient-to-r from-indigo-900 via-purple-900 to-slate-900 text-white p-6 sm:p-7 rounded-2xl shadow-xl shadow-indigo-950/20 border border-indigo-800/60 relative overflow-hidden">
+        {/* Glow effect background */}
+        <div className="absolute -right-20 -top-20 w-80 h-80 bg-indigo-500/20 rounded-full blur-3xl pointer-events-none" />
+        <div className="absolute right-40 -bottom-20 w-60 h-60 bg-pink-500/20 rounded-full blur-3xl pointer-events-none" />
+
+        <div className="relative z-10">
+          <div className="flex items-center gap-2 mb-1.5">
+            <span className="text-xs font-black uppercase tracking-widest text-indigo-300 font-display">
               McGate Enterprise Operations
             </span>
-            <span className="text-slate-500">•</span>
-            <span className="text-xs text-slate-400">
+            <span className="text-indigo-400/60">•</span>
+            <span className="text-xs text-indigo-200/80 font-medium">
               {new Date().toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' })}
             </span>
           </div>
-          <h1 className="text-2xl sm:text-3xl font-bold tracking-tight text-white">
+          <h1 className="text-2xl sm:text-3xl font-black tracking-tight text-white font-display">
             Welcome back, {user?.firstName || 'Colleague'}
           </h1>
-          <p className="text-xs sm:text-sm text-slate-400 mt-1 max-w-2xl">
+          <p className="text-xs sm:text-sm text-indigo-100/80 mt-1 max-w-2xl leading-relaxed">
             {role === 'EMPLOYEE'
-              ? 'Clock in to mark your attendance, track your assignments, and manage assigned deliverables.'
-              : 'Enterprise visibility across active attendance, tasks, deliverables, and departmental workflows.'}
+              ? 'Clock in to record your daily attendance, track assignments, and collaborate on active deliverables.'
+              : 'Full executive visibility across active attendance, squads, tasks, deliverables, and operational audit records.'}
           </p>
         </div>
 
         {/* Quick Actions */}
-        <div className="flex flex-wrap items-center gap-2.5 shrink-0">
+        <div className="flex flex-wrap items-center gap-3 shrink-0 relative z-10">
           <button
             onClick={() => setIsTaskModalOpen(true)}
-            className="px-3.5 py-2 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-lg shadow-sm transition flex items-center gap-1.5"
+            className="px-4 py-2.5 bg-gradient-to-r from-indigo-500 to-purple-600 hover:from-indigo-600 hover:to-purple-700 text-white text-xs font-bold rounded-xl shadow-md shadow-indigo-500/30 transition flex items-center gap-2 cursor-pointer"
           >
             <Plus className="w-4 h-4" />
             <span>Create Task</span>
@@ -100,9 +104,9 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
           {isAdminOrManager && (
             <button
               onClick={() => setIsAssignmentModalOpen(true)}
-              className="px-3.5 py-2 bg-slate-800 hover:bg-slate-700 text-white text-xs font-bold rounded-lg border border-slate-700 transition flex items-center gap-1.5"
+              className="px-4 py-2.5 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-xl border border-white/20 backdrop-blur-xs transition flex items-center gap-2 cursor-pointer"
             >
-              <Briefcase className="w-4 h-4" />
+              <Briefcase className="w-4 h-4 text-pink-300" />
               <span>New Assignment</span>
             </button>
           )}
@@ -113,76 +117,85 @@ export const DashboardView: React.FC<DashboardViewProps> = ({ onNavigate }) => {
       <AttendanceCard onStatusUpdated={loadDashboardData} />
 
       {/* High-Level Enterprise Metrics Bar */}
-      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4">
+      <div className="grid grid-cols-2 lg:grid-cols-4 gap-4 sm:gap-5">
         {/* Metric 1: Total Employees & Present */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-2">
-            <span>Workforce Active Today</span>
-            <Users className="w-4 h-4 text-blue-600" />
+        <div className="bg-white p-5 rounded-2xl border border-indigo-100 shadow-md shadow-slate-100/60 hover:shadow-lg transition group">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2 font-display">
+            <span>Active Today</span>
+            <div className="p-2 rounded-xl bg-blue-50 text-blue-600 group-hover:scale-110 transition">
+              <Users className="w-4 h-4" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">
+            <span className="text-3xl font-black text-slate-900 font-display">
               {liveAttendance?.metrics?.clockedIn ?? '—'}
             </span>
-            <span className="text-xs text-slate-400">
+            <span className="text-xs text-slate-400 font-medium">
               / {liveAttendance?.metrics?.totalEmployees ?? '—'} registered
             </span>
           </div>
-          <div className="text-[11px] text-emerald-600 font-medium mt-1">
-            {liveAttendance?.metrics?.currentlyActive ?? 0} currently active on shift
+          <div className="text-[11px] text-emerald-600 font-bold mt-2 flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse" />
+            <span>{liveAttendance?.metrics?.currentlyActive ?? 0} currently on shift</span>
           </div>
         </div>
 
         {/* Metric 2: Open / Unclosed Sessions */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-amber-100 shadow-md shadow-slate-100/60 hover:shadow-lg transition group">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2 font-display">
             <span>Open Sessions</span>
-            <Clock className="w-4 h-4 text-amber-600" />
+            <div className="p-2 rounded-xl bg-amber-50 text-amber-600 group-hover:scale-110 transition">
+              <Clock className="w-4 h-4" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">
+            <span className="text-3xl font-black text-amber-600 font-display">
               {liveAttendance?.metrics?.unclosedSessionsCount ?? 0}
             </span>
-            <span className="text-xs text-slate-400">past records</span>
+            <span className="text-xs text-slate-400 font-medium">pending clock-out</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            No clock-out recorded (Available for HR review)
+          <div className="text-[11px] text-slate-500 font-medium mt-2">
+            Available for HR supervisor review
           </div>
         </div>
 
         {/* Metric 3: Active Tasks */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-2">
+        <div className="bg-white p-5 rounded-2xl border border-purple-100 shadow-md shadow-slate-100/60 hover:shadow-lg transition group">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2 font-display">
             <span>Tasks In Progress</span>
-            <CheckCircle2 className="w-4 h-4 text-indigo-600" />
+            <div className="p-2 rounded-xl bg-purple-50 text-purple-600 group-hover:scale-110 transition">
+              <CheckCircle2 className="w-4 h-4" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-slate-900">
+            <span className="text-3xl font-black text-indigo-900 font-display">
               {tasksReport?.inProgress ?? '—'}
             </span>
-            <span className="text-xs text-slate-400">
-              of {tasksReport?.total ?? '—'} total
+            <span className="text-xs text-slate-400 font-medium">
+              of {tasksReport?.total ?? '—'} active
             </span>
           </div>
-          <div className="text-[11px] text-blue-600 font-medium mt-1">
+          <div className="text-[11px] text-indigo-600 font-bold mt-2">
             {tasksReport?.completionRate ?? 0}% overall completion rate
           </div>
         </div>
 
         {/* Metric 4: Overdue Items */}
-        <div className="bg-white p-4 rounded-xl border border-slate-200 shadow-xs">
-          <div className="flex items-center justify-between text-slate-500 text-xs font-semibold mb-2">
-            <span>Overdue Deliverables</span>
-            <AlertTriangle className="w-4 h-4 text-rose-600" />
+        <div className="bg-white p-5 rounded-2xl border border-rose-100 shadow-md shadow-slate-100/60 hover:shadow-lg transition group">
+          <div className="flex items-center justify-between text-slate-500 text-xs font-bold mb-2 font-display">
+            <span>Attention Needed</span>
+            <div className="p-2 rounded-xl bg-rose-50 text-rose-600 group-hover:scale-110 transition">
+              <AlertTriangle className="w-4 h-4" />
+            </div>
           </div>
           <div className="flex items-baseline gap-2">
-            <span className="text-2xl font-black text-rose-600">
+            <span className="text-3xl font-black text-rose-600 font-display">
               {tasksReport?.overdue ?? 0}
             </span>
-            <span className="text-xs text-slate-400">urgent action</span>
+            <span className="text-xs text-rose-400 font-medium">overdue tasks</span>
           </div>
-          <div className="text-[11px] text-slate-500 mt-1">
-            Late arrival flags: {liveAttendance?.metrics?.lateArrivals ?? 0} today
+          <div className="text-[11px] text-rose-600/90 font-medium mt-2">
+            Late arrivals: {liveAttendance?.metrics?.lateArrivals ?? 0} logged today
           </div>
         </div>
       </div>

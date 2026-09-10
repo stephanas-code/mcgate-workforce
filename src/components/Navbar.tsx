@@ -8,18 +8,21 @@ import {
   ChevronDown,
   ShieldCheck,
   UserCheck,
-  Check,
   Building2,
   Menu,
   X,
   Globe,
-  MapPin
+  KeyRound,
+  Camera,
+  User,
+  Sparkles
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 import { useTimezone } from '../context/TimezoneContext.tsx';
 import { api } from '../api.ts';
 import { NotificationItem } from '../types.ts';
 import { TimezoneSelectorModal } from './TimezoneSelectorModal.tsx';
+import { UserProfileModal } from './UserProfileModal.tsx';
 
 interface NavbarProps {
   onOpenSearch: () => void;
@@ -35,17 +38,17 @@ export const Navbar: React.FC<NavbarProps> = ({
   onToggleSidebar,
   isSidebarOpen = false
 }) => {
-  const { user, todayAttendance, demoUsers, switchRole, logout } = useAuth();
+  const { user, todayAttendance, logout } = useAuth();
   const { timezone, locationName, formatTime, details } = useTimezone();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
-  const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
   const [isTimezoneModalOpen, setIsTimezoneModalOpen] = useState(false);
+  const [isProfileModalOpen, setIsProfileModalOpen] = useState(false);
+  const [profileModalTab, setProfileModalTab] = useState<'profile' | 'password'>('profile');
 
   const notifRef = useRef<HTMLDivElement>(null);
-  const roleRef = useRef<HTMLDivElement>(null);
   const profileRef = useRef<HTMLDivElement>(null);
 
   // Poll or load notifications
@@ -70,9 +73,6 @@ export const Navbar: React.FC<NavbarProps> = ({
     const handleClickOutside = (e: MouseEvent) => {
       if (notifRef.current && !notifRef.current.contains(e.target as Node)) {
         setIsNotifOpen(false);
-      }
-      if (roleRef.current && !roleRef.current.contains(e.target as Node)) {
-        setIsRoleMenuOpen(false);
       }
       if (profileRef.current && !profileRef.current.contains(e.target as Node)) {
         setIsProfileOpen(false);
@@ -107,31 +107,17 @@ export const Navbar: React.FC<NavbarProps> = ({
     ? formatTime(todayAttendance.clock_in_time, { hour: '2-digit', minute: '2-digit', second: undefined })
     : null;
 
-  const roleColors: Record<string, string> = {
-    SUPER_ADMIN: 'bg-rose-100 text-rose-800 border-rose-200',
-    ADMIN: 'bg-purple-100 text-purple-800 border-purple-200',
-    MANAGER: 'bg-blue-100 text-blue-800 border-blue-200',
-    EMPLOYEE: 'bg-emerald-100 text-emerald-800 border-emerald-200'
-  };
-
-  const roleLabel: Record<string, string> = {
-    SUPER_ADMIN: 'Super Admin',
-    ADMIN: 'Admin / HR',
-    MANAGER: 'Team Lead',
-    EMPLOYEE: 'Employee'
-  };
-
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs w-full max-w-full">
+    <header className="h-16 bg-white/95 backdrop-blur-md border-b border-indigo-100/90 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs w-full max-w-full">
       {/* Brand & Platform Identity */}
-      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+      <div className="flex items-center gap-2.5 sm:gap-3.5 min-w-0">
         {/* Mobile Hamburger Toggle Button */}
         {onToggleSidebar && (
           <button
             id="mobile-sidebar-hamburger"
             type="button"
             onClick={onToggleSidebar}
-            className="lg:hidden p-2 -ml-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition shrink-0 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            className="lg:hidden p-2 -ml-1 text-slate-700 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition shrink-0 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-indigo-500"
             aria-label={isSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
             title="Toggle Navigation Menu"
           >
@@ -143,8 +129,8 @@ export const Navbar: React.FC<NavbarProps> = ({
           </button>
         )}
 
-        <div className="w-8 h-8 sm:w-9 sm:h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black tracking-wider text-sm sm:text-base shadow-sm border border-slate-800 shrink-0">
-          <span className="text-blue-400">M</span>G
+        <div className="w-9 h-9 sm:w-10 sm:h-10 bg-gradient-to-tr from-indigo-600 via-purple-600 to-pink-500 rounded-xl flex items-center justify-center text-white font-extrabold tracking-wider text-sm sm:text-base shadow-md shadow-indigo-500/25 shrink-0 border border-white/20">
+          <span className="text-amber-200">M</span>G
         </div>
         <div className="min-w-0">
           <div className="flex items-center gap-1.5 sm:gap-2">
@@ -152,39 +138,39 @@ export const Navbar: React.FC<NavbarProps> = ({
               <span className="hidden sm:inline">McGate Technologies</span>
               <span className="sm:hidden">McGate</span>
             </span>
-            <span className="hidden md:inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
-              Workforce OS
+            <span className="inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-2 py-0.5 rounded-full bg-indigo-50 text-indigo-700 border border-indigo-200/80 shrink-0">
+              Enterprise
             </span>
           </div>
-          <div className="text-[11px] text-slate-500 hidden sm:block truncate">
-            Internal Operations & Attendance Hub
+          <div className="text-[11px] text-slate-500 hidden sm:block truncate font-medium">
+            Workforce, Projects & Attendance Hub
           </div>
         </div>
       </div>
 
       {/* Center Search Bar */}
-      <div className="hidden lg:flex items-center flex-1 max-w-md mx-8">
+      <div className="hidden lg:flex items-center flex-1 max-w-md mx-6">
         <button
           onClick={onOpenSearch}
-          className="w-full flex items-center justify-between px-3.5 py-2 text-sm text-slate-400 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition cursor-pointer"
+          className="w-full flex items-center justify-between px-3.5 py-2 text-xs font-medium text-slate-400 bg-slate-50/80 hover:bg-white hover:text-slate-600 border border-slate-200/80 hover:border-indigo-200 rounded-xl transition cursor-pointer shadow-xs focus:ring-2 focus:ring-indigo-500"
         >
           <div className="flex items-center gap-2.5">
-            <Search className="w-4 h-4 text-slate-400" />
-            <span>Search directory, tasks, projects (Ctrl+K)...</span>
+            <Search className="w-4 h-4 text-indigo-500" />
+            <span>Search directory, tasks, projects, milestones...</span>
           </div>
-          <kbd className="text-[10px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded text-slate-400">
+          <kbd className="text-[10px] font-mono px-1.5 py-0.5 bg-white border border-slate-200 rounded-md text-slate-500 font-semibold shadow-2xs">
             ⌘K
           </kbd>
         </button>
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
+      <div className="flex items-center gap-1.5 sm:gap-2.5 shrink-0">
         {/* Mobile Search Icon */}
         <button
           id="mobile-search-trigger"
           onClick={onOpenSearch}
-          className="lg:hidden p-1.5 sm:p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition shrink-0 cursor-pointer"
+          className="lg:hidden p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl transition shrink-0 cursor-pointer"
           title="Search"
           aria-label="Search"
         >
@@ -195,10 +181,10 @@ export const Navbar: React.FC<NavbarProps> = ({
         <button
           id="navbar-attendance-btn"
           onClick={() => onNavigate('attendance')}
-          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-semibold border transition shrink-0 cursor-pointer ${
+          className={`flex items-center gap-1.5 px-2.5 sm:px-3.5 py-1.5 rounded-full text-[11px] sm:text-xs font-bold border transition shrink-0 cursor-pointer shadow-xs ${
             isClockedIn
-              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
-              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
+              ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100 hover:border-emerald-400'
+              : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100 hover:border-amber-400'
           }`}
           title="Click to view Attendance Hub"
         >
@@ -230,73 +216,21 @@ export const Navbar: React.FC<NavbarProps> = ({
           id="navbar-timezone-btn"
           type="button"
           onClick={() => setIsTimezoneModalOpen(true)}
-          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer shrink-0"
-          title={`Active Timezone: ${locationName} (${timezone}) • Click to select region or detect GPS location`}
+          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1.5 rounded-xl border border-indigo-100 bg-indigo-50/50 hover:bg-indigo-50 text-xs font-semibold text-slate-700 transition cursor-pointer shrink-0"
+          title={`Active Timezone: ${locationName} (${timezone}) • Click to change timezone`}
         >
-          <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
-          <span className="font-mono text-slate-900 hidden sm:inline">{details.currentTime}</span>
+          <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-indigo-600 shrink-0" />
+          <span className="font-mono text-slate-900 hidden sm:inline font-bold">{details.currentTime}</span>
           <span className="text-[11px] text-slate-500 hidden md:inline">({details.abbreviation || details.city})</span>
-          <span className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-bold hidden lg:inline">
+          <span className="text-[10px] px-1.5 py-0.5 rounded-md bg-indigo-100 text-indigo-800 font-bold hidden lg:inline">
             {details.offset}
           </span>
         </button>
 
-        {/* Demo Role Switcher Dropdown (Crucial for evaluation!) */}
-        <div className="relative shrink-0" ref={roleRef}>
-          <button
-            id="navbar-role-switcher"
-            onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer"
-            aria-label="Switch User Role"
-          >
-            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
-            <span className="hidden md:inline">Role:</span>
-            <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-bold border ${roleColors[user?.role || 'EMPLOYEE']}`}>
-              <span className="hidden sm:inline">{roleLabel[user?.role || 'EMPLOYEE']}</span>
-              <span className="sm:hidden">{user?.role === 'SUPER_ADMIN' ? 'Admin' : user?.role === 'ADMIN' ? 'HR' : user?.role === 'MANAGER' ? 'Lead' : 'Staff'}</span>
-            </span>
-            <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
-          </button>
-
-          {isRoleMenuOpen && (
-            <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
-              <div className="px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
-                Switch Role Profile
-              </div>
-              <div className="space-y-1">
-                {demoUsers.map((demo) => {
-                  const isCurrent = demo.email === user?.email;
-                  return (
-                    <button
-                      key={demo.id}
-                      onClick={async () => {
-                        setIsRoleMenuOpen(false);
-                        await switchRole(demo.email);
-                      }}
-                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition cursor-pointer ${
-                        isCurrent ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
-                      }`}
-                    >
-                      <div>
-                        <div className="flex items-center gap-1.5">
-                          <span className="font-semibold text-slate-900">
-                            {demo.first_name} {demo.last_name}
-                          </span>
-                          <span className={`px-1 text-[9px] font-bold rounded border ${roleColors[demo.role]}`}>
-                            {roleLabel[demo.role]}
-                          </span>
-                        </div>
-                        <div className="text-[11px] text-slate-500 mt-0.5">
-                          {demo.job_title} • {demo.dept_name || 'Corp'}
-                        </div>
-                      </div>
-                      {isCurrent && <Check className="w-4 h-4 text-blue-600" />}
-                    </button>
-                  );
-                })}
-              </div>
-            </div>
-          )}
+        {/* Super Admin Verified Status Badge */}
+        <div className="hidden sm:flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-gradient-to-r from-purple-50 via-indigo-50 to-pink-50 border border-purple-200/80 text-[11px] font-bold text-purple-900 shadow-2xs">
+          <ShieldCheck className="w-4 h-4 text-purple-600 shrink-0" />
+          <span>Super Admin</span>
         </div>
 
         {/* Notifications Popover */}
@@ -304,33 +238,33 @@ export const Navbar: React.FC<NavbarProps> = ({
           <button
             id="navbar-notif-btn"
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg relative transition cursor-pointer"
+            className="p-2 text-slate-600 hover:text-indigo-600 hover:bg-indigo-50 rounded-xl relative transition cursor-pointer"
             title="Notifications"
             aria-label="Notifications"
           >
             <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 w-4 h-4 bg-rose-600 text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-white">
+              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-500 text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-white shadow-xs">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </button>
 
           {isNotifOpen && (
-            <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95">
-              <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-2xl border border-indigo-100 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+              <div className="p-3.5 bg-gradient-to-r from-indigo-50 to-purple-50 border-b border-indigo-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
-                  <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Notifications</span>
+                  <span className="text-xs font-bold uppercase tracking-wider text-indigo-900">Notifications</span>
                   {unreadCount > 0 && (
-                    <span className="text-[10px] font-bold bg-blue-100 text-blue-700 px-2 py-0.5 rounded-full">
-                      {unreadCount} unread
+                    <span className="text-[10px] font-bold bg-indigo-600 text-white px-2 py-0.5 rounded-full">
+                      {unreadCount} new
                     </span>
                   )}
                 </div>
                 {unreadCount > 0 && (
                   <button
                     onClick={handleMarkAllRead}
-                    className="text-xs font-medium text-blue-600 hover:underline"
+                    className="text-xs font-bold text-indigo-600 hover:text-indigo-800 transition cursor-pointer"
                   >
                     Mark all read
                   </button>
@@ -339,7 +273,7 @@ export const Navbar: React.FC<NavbarProps> = ({
 
               <div className="max-h-80 overflow-y-auto divide-y divide-slate-100">
                 {notifications.length === 0 ? (
-                  <div className="p-6 text-center text-xs text-slate-400">
+                  <div className="p-6 text-center text-xs text-slate-400 font-medium">
                     No new notifications
                   </div>
                 ) : (
@@ -351,21 +285,21 @@ export const Navbar: React.FC<NavbarProps> = ({
                         if (n.link) onNavigate(n.link.replace('/', ''));
                         setIsNotifOpen(false);
                       }}
-                      className={`p-3 text-left transition cursor-pointer hover:bg-slate-50 ${
-                        !n.is_read ? 'bg-blue-50/50' : ''
+                      className={`p-3.5 text-left transition cursor-pointer hover:bg-indigo-50/40 ${
+                        !n.is_read ? 'bg-indigo-50/20' : ''
                       }`}
                     >
                       <div className="flex items-start justify-between gap-2">
-                        <div className="font-semibold text-xs text-slate-800">
+                        <div className="font-bold text-xs text-slate-900">
                           {n.title}
                         </div>
                         {!n.is_read && (
-                          <span className="w-2 h-2 rounded-full bg-blue-600 shrink-0 mt-1" />
+                          <span className="w-2 h-2 rounded-full bg-indigo-600 shrink-0 mt-1" />
                         )}
                       </div>
                       <p className="text-xs text-slate-600 mt-0.5 line-clamp-2">{n.message}</p>
-                      <div className="text-[10px] text-slate-400 mt-1 flex items-center gap-1">
-                        <Clock className="w-3 h-3" />
+                      <div className="text-[10px] text-slate-400 mt-1.5 flex items-center gap-1">
+                        <Clock className="w-3 h-3 text-indigo-400" />
                         {new Date(n.created_at).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} •{' '}
                         {new Date(n.created_at).toLocaleDateString()}
                       </div>
@@ -377,65 +311,129 @@ export const Navbar: React.FC<NavbarProps> = ({
           )}
         </div>
 
-        {/* User Profile Dropdown */}
+        {/* User Profile Dropdown with Avatar */}
         <div className="relative" ref={profileRef}>
           <button
             onClick={() => setIsProfileOpen(!isProfileOpen)}
-            className="flex items-center gap-2 p-1.5 rounded-lg hover:bg-slate-100 transition"
+            className="flex items-center gap-2 p-1.5 rounded-xl hover:bg-indigo-50/60 border border-transparent hover:border-indigo-100 transition cursor-pointer"
+            aria-label="User profile menu"
           >
-            <div className="w-8 h-8 rounded-lg bg-slate-900 text-white font-bold text-xs flex items-center justify-center border border-slate-800">
-              {user?.firstName ? `${user.firstName[0]}${user.lastName?.[0] || ''}` : 'U'}
-            </div>
+            {user?.avatarUrl ? (
+              <img
+                src={user.avatarUrl}
+                alt={user.fullName || 'User'}
+                className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl object-cover ring-2 ring-indigo-500/30 shadow-xs"
+              />
+            ) : (
+              <div className="w-8 h-8 sm:w-9 sm:h-9 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold text-xs flex items-center justify-center shadow-xs ring-2 ring-indigo-500/20">
+                {user?.firstName ? `${user.firstName[0]}${user.lastName?.[0] || ''}` : 'SA'}
+              </div>
+            )}
             <div className="text-left hidden xl:block">
               <div className="text-xs font-bold text-slate-900 leading-tight">
                 {user?.fullName || user?.email}
               </div>
-              <div className="text-[11px] text-slate-500 leading-tight">
-                {user?.jobTitle || 'Employee'}
+              <div className="text-[11px] text-indigo-600 font-semibold leading-tight">
+                {user?.jobTitle || 'Super Admin'}
               </div>
             </div>
             <ChevronDown className="w-3.5 h-3.5 text-slate-400 hidden xl:block" />
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
-              <div className="p-2 border-b border-slate-100">
-                <div className="text-sm font-bold text-slate-900">{user?.fullName}</div>
-                <div className="text-xs text-slate-500 font-mono">{user?.employeeCode}</div>
-                <div className="text-xs text-slate-500 truncate">{user?.email}</div>
-                <div className="mt-1.5 flex items-center gap-1.5 text-xs text-slate-600">
-                  <Building2 className="w-3.5 h-3.5 text-slate-400" />
-                  <span>{user?.departmentName || 'General Dept'}</span>
+            <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-white rounded-2xl shadow-2xl border border-indigo-100 p-2 z-50 animate-in fade-in zoom-in-95">
+              {/* Profile Card Header */}
+              <div className="p-3 bg-gradient-to-br from-indigo-50/70 to-purple-50/50 rounded-xl border border-indigo-100/80 mb-2">
+                <div className="flex items-center gap-3">
+                  {user?.avatarUrl ? (
+                    <img
+                      src={user.avatarUrl}
+                      alt={user.fullName || 'User'}
+                      className="w-11 h-11 rounded-xl object-cover ring-2 ring-indigo-500/40 shadow-sm shrink-0"
+                    />
+                  ) : (
+                    <div className="w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-600 to-purple-600 text-white font-bold text-sm flex items-center justify-center shadow-sm shrink-0">
+                      {user?.firstName ? `${user.firstName[0]}${user.lastName?.[0] || ''}` : 'SA'}
+                    </div>
+                  )}
+                  <div className="min-w-0">
+                    <div className="text-xs font-bold text-slate-900 truncate">
+                      {user?.fullName || 'Super Admin'}
+                    </div>
+                    <div className="text-[11px] text-slate-500 font-mono truncate">
+                      {user?.employeeCode || 'EMP-001'}
+                    </div>
+                    <div className="text-[11px] text-slate-500 truncate">
+                      {user?.email}
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              <div className="pt-2">
+              {/* Navigation and Action Items */}
+              <div className="space-y-1">
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    setProfileModalTab('profile');
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
+                >
+                  <Camera className="w-4 h-4 text-indigo-600" />
+                  <div className="text-left flex-1">
+                    <div>Upload Photo & Edit Profile</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Change teammate photo & details</div>
+                  </div>
+                </button>
+
+                <button
+                  onClick={() => {
+                    setIsProfileOpen(false);
+                    setProfileModalTab('password');
+                    setIsProfileModalOpen(true);
+                  }}
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-semibold text-slate-700 hover:text-indigo-700 hover:bg-indigo-50 rounded-xl transition cursor-pointer"
+                >
+                  <KeyRound className="w-4 h-4 text-purple-600" />
+                  <div className="text-left flex-1">
+                    <div>Change Password</div>
+                    <div className="text-[10px] text-slate-400 font-normal">Update login security credentials</div>
+                  </div>
+                </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     onNavigate('attendance');
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition cursor-pointer"
                 >
-                  <UserCheck className="w-4 h-4 text-slate-500" />
+                  <UserCheck className="w-4 h-4 text-emerald-600" />
                   <span>My Attendance Records</span>
                 </button>
+
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     onNavigate('tasks');
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-slate-700 hover:bg-slate-50 rounded-lg"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-medium text-slate-700 hover:bg-slate-50 rounded-xl transition cursor-pointer"
                 >
-                  <CheckCircle2 className="w-4 h-4 text-slate-500" />
-                  <span>My Tasks</span>
+                  <CheckCircle2 className="w-4 h-4 text-blue-600" />
+                  <span>My Tasks & Assignments</span>
                 </button>
+
+                <div className="my-1 border-t border-slate-100" />
+
                 <button
                   onClick={() => {
                     setIsProfileOpen(false);
                     logout();
                   }}
-                  className="w-full flex items-center gap-2 px-3 py-2 text-xs text-rose-600 hover:bg-rose-50 rounded-lg mt-1 font-medium"
+                  className="w-full flex items-center gap-2.5 px-3 py-2 text-xs font-bold text-rose-600 hover:bg-rose-50 rounded-xl transition cursor-pointer"
                 >
                   <LogOut className="w-4 h-4 text-rose-600" />
                   <span>Sign Out</span>
@@ -451,6 +449,15 @@ export const Navbar: React.FC<NavbarProps> = ({
         isOpen={isTimezoneModalOpen}
         onClose={() => setIsTimezoneModalOpen(false)}
       />
+
+      {/* Profile & Password Management Modal */}
+      <UserProfileModal
+        isOpen={isProfileModalOpen}
+        onClose={() => setIsProfileModalOpen(false)}
+        initialTab={profileModalTab}
+      />
     </header>
   );
 };
+
+export default Navbar;
