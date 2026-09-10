@@ -3,10 +3,21 @@ import type { Database, SqlValue } from 'sql.js';
 import fs from 'fs';
 import path from 'path';
 import os from 'os';
-import { fileURLToPath } from 'url';
+function getCurrentDir(): string {
+  try {
+    if (typeof __dirname !== 'undefined' && __dirname) {
+      return __dirname;
+    }
+    if (typeof import.meta !== 'undefined' && import.meta && import.meta.url) {
+      return path.dirname(fileURLToPath(import.meta.url));
+    }
+  } catch {
+    // fallback
+  }
+  return process.cwd();
+}
 
-const __filename = fileURLToPath(import.meta.url);
-const __dirname = path.dirname(__filename);
+const CURRENT_DIR = getCurrentDir();
 
 let dbInstance: Database | null = null;
 const IS_VERCEL = Boolean(process.env.VERCEL);
@@ -48,8 +59,8 @@ import { SQL_WASM_BASE64 } from './wasmBinary.ts';
 
 function getWasmBinary(): Buffer {
   const possiblePaths = [
-    path.join(__dirname, 'sql-wasm.wasm'),
-    path.join(__dirname, '..', 'api', 'sql-wasm.wasm'),
+    path.join(CURRENT_DIR, 'sql-wasm.wasm'),
+    path.join(CURRENT_DIR, '..', 'api', 'sql-wasm.wasm'),
     path.join(process.cwd(), 'api', 'sql-wasm.wasm'),
     path.join(process.cwd(), 'server', 'sql-wasm.wasm'),
     path.join(process.cwd(), 'sql-wasm.wasm'),
@@ -76,7 +87,7 @@ export async function getDb(): Promise<Database> {
     ...(wasmBinary ? { wasmBinary } : {}),
     locateFile: (file) => {
       const candidates = [
-        path.join(__dirname, file),
+        path.join(CURRENT_DIR, file),
         path.join(process.cwd(), 'api', file),
         path.join(process.cwd(), 'server', file),
         path.join(process.cwd(), file),
