@@ -6,6 +6,7 @@ import { authenticateToken, AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
 import { createNotification } from '../notifications.ts';
 import { calculateMilestoneMetrics } from '../milestones.ts';
+import { uploadToStorage, deleteFromStorage } from '../storage.ts';
 
 const ALLOWED_EXTENSIONS = new Set(['pdf', 'docx', 'txt', 'md']);
 const MAX_DOCUMENT_SIZE = 15 * 1024 * 1024; // 15MB upload boundary
@@ -327,6 +328,12 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
           rawExt === 'md' ? 'text/markdown' : 'text/plain'
         );
 
+        const { url: storedUrl, size: storedSize } = await uploadToStorage(
+          safeOriginalName,
+          fileData,
+          mimeType
+        );
+
         await execute(`
           INSERT INTO project_documents (project_id, filename, original_name, file_size, file_extension, mime_type, file_data, uploaded_by_user_id, uploaded_by_name, created_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -334,10 +341,10 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
           projectId,
           safeStorageName,
           safeOriginalName,
-          fileSize,
+          storedSize || fileSize,
           rawExt,
           mimeType,
-          fileData,
+          storedUrl,
           req.user!.id,
           req.user!.fullName || req.user!.email,
           now
@@ -571,6 +578,13 @@ router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) =
         rawExt === 'md' ? 'text/markdown' : 'text/plain'
       );
 
+      // Upload to Vercel Blob (or local fallback)
+      const { url: storedUrl, size: storedSize } = await uploadToStorage(
+        safeOriginalName,
+        rawBytes || fileData,
+        mimeType
+      );
+
       const { lastInsertRowid: docId } = await execute(`
         INSERT INTO project_documents (project_id, filename, original_name, file_size, file_extension, mime_type, file_data, uploaded_by_user_id, uploaded_by_name, created_at)
         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
@@ -578,10 +592,10 @@ router.post('/:id/documents', authenticateToken, async (req: AuthRequest, res) =
         projectId,
         safeFilename,
         safeOriginalName,
-        fileSize,
+        storedSize || fileSize,
         rawExt,
         mimeType,
-        fileData,
+        storedUrl,
         req.user!.id,
         req.user!.fullName || req.user!.email,
         now
@@ -654,17 +668,30 @@ router.get('/:id/documents/:docId', authenticateToken, async (req: AuthRequest, 
 
     if (ext === 'docx' && doc.file_data) {
       try {
-        let base64Part = doc.file_data;
-        if (base64Part.startsWith('data:')) {
-          base64Part = base64Part.split(',')[1];
+        let buf: Buffer;
+        if (doc.file_data.startsWith('http://') || doc.file_data.startsWith('https://')) {
+          const resp = await fetch(doc.file_data);
+          buf = Buffer.from(await resp.arrayBuffer());
+        } else {
+          let base64Part = doc.file_data;
+          if (base64Part.startsWith('data:')) {
+            base64Part = base64Part.split(',')[1];
+          }
+          buf = Buffer.from(base64Part, 'base64');
         }
-        const buf = Buffer.from(base64Part, 'base64');
         extractedText = extractDocxText(buf);
       } catch (e) {
         console.warn('Could not extract docx text:', e);
       }
     } else if ((ext === 'txt' || ext === 'md') && doc.file_data) {
-      if (doc.file_data.startsWith('data:')) {
+      if (doc.file_data.startsWith('http://') || doc.file_data.startsWith('https://')) {
+        try {
+          const resp = await fetch(doc.file_data);
+          extractedText = await resp.text();
+        } catch {
+          extractedText = null;
+        }
+      } else if (doc.file_data.startsWith('data:')) {
         const base64Part = doc.file_data.split(',')[1];
         try {
           extractedText = Buffer.from(base64Part, 'base64').toString('utf8');
@@ -713,6 +740,11 @@ router.get('/:id/documents/:docId/raw', authenticateToken, async (req: AuthReque
 
     if (!doc || !doc.file_data) {
       return res.status(404).json({ error: 'Document data not found.' });
+    }
+
+    // If hosted on Vercel Blob CDN, redirect directly for optimal throughput and zero lambda memory consumption
+    if (doc.file_data.startsWith('http://') || doc.file_data.startsWith('https://')) {
+      return res.redirect(doc.file_data);
     }
 
     const ext = (doc.file_extension || '').toLowerCase();
@@ -765,6 +797,11 @@ router.delete('/:id/documents/:docId', authenticateToken, async (req: AuthReques
     const isPrivileged = req.user!.role === 'SUPER_ADMIN' || req.user!.role === 'ADMIN' || req.user!.role === 'MANAGER';
     if (!isUploader && !isPrivileged) {
       return res.status(403).json({ error: 'Permission denied. Only document uploader or managers may remove this document.' });
+    }
+
+    // Delete from cloud storage if blob URL
+    if (doc.file_data && (doc.file_data.startsWith('http://') || doc.file_data.startsWith('https://'))) {
+      await deleteFromStorage(doc.file_data);
     }
 
     await execute('DELETE FROM project_documents WHERE id = ?', [docId]);
