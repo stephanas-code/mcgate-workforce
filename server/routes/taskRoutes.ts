@@ -3,6 +3,7 @@ import { queryOne, queryAll, execute } from '../db.ts';
 import { authenticateToken, requireRoles, AuthRequest } from '../auth.ts';
 import { createNotification } from '../notifications.ts';
 import { logAudit } from '../audit.ts';
+import { syncMilestoneStageAndProgress } from '../milestones.ts';
 
 const router = Router();
 
@@ -190,8 +191,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// 3. Create task (Managers, Admins, Super Admins)
-router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: AuthRequest, res) => {
+// 3. Create task (Team leads in a project, Managers, Admins, Super Admins)
+router.post('/', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const {
       title,
@@ -209,6 +210,24 @@ router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGE
 
     if (!title || !projectId || !dueDate) {
       return res.status(400).json({ error: 'Title, project ID, and due date are required.' });
+    }
+
+    const userRole = req.user?.role;
+    const userEmpId = req.user?.employeeId;
+
+    // Check authorization: Admins and Managers always allowed; Team Leads of this project/milestone allowed
+    let isAuthorized = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || userRole === 'MANAGER';
+    if (!isAuthorized && userEmpId) {
+      const prj = await queryOne<{ manager_id: number }>('SELECT manager_id FROM projects WHERE id = ?', [projectId]);
+      if (prj && prj.manager_id === userEmpId) isAuthorized = true;
+      if (!isAuthorized && assignmentId) {
+        const asg = await queryOne<{ lead_employee_id: number }>('SELECT lead_employee_id FROM assignments WHERE id = ?', [assignmentId]);
+        if (asg && asg.lead_employee_id === userEmpId) isAuthorized = true;
+      }
+    }
+
+    if (!isAuthorized) {
+      return res.status(403).json({ error: 'Permission denied. Only team leads, project managers, or administrators can create and assign tasks.' });
     }
 
     const taskCount = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM tasks');
@@ -245,6 +264,11 @@ router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGE
       VALUES (?, ?, ?, 'TASK_CREATED', NULL, 'Created task', ?)
     `, [taskId, req.user!.id, req.user!.fullName || req.user!.email, now]);
 
+    // Automatically synchronize milestone stage and priority-weighted progress
+    if (assignmentId) {
+      await syncMilestoneStageAndProgress(Number(assignmentId));
+    }
+
     // If assigned, send notification to employee's user account
     if (assignedEmployeeId) {
       const emp = await queryOne<{ user_id: number; first_name: string; last_name: string }>(
@@ -255,7 +279,7 @@ router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGE
         await createNotification({
           userId: emp.user_id,
           title: 'New Task Assignment',
-          message: `You have been assigned a new task: "${title}" by ${req.user!.fullName || req.user!.email}.`,
+          message: `You have been assigned a new task: "${title}" (Priority: ${priority}) by ${req.user!.fullName || req.user!.email}.`,
           type: 'TASK_ASSIGNED',
           link: '/tasks'
         });
@@ -270,7 +294,7 @@ router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGE
       resource: 'TASK',
       resourceId: taskId,
       ipAddress: req.ip,
-      afterValue: `Created task ${taskCode}: ${title} (Priority: ${priority})`
+      afterValue: `Created task ${taskCode}: ${title} (Priority: ${priority}${assignmentId ? `, Milestone: ${assignmentId}` : ''})`
     });
 
     res.status(201).json({
@@ -285,7 +309,7 @@ router.post('/', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGE
   }
 });
 
-// 4. Update task / change status
+// 4. Update task / change status / reassign (Admins have right to reassign tasks to other teammates)
 router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const taskId = Number(req.params.id);
@@ -296,13 +320,12 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
 
     const userRole = req.user?.role;
     const userEmpId = req.user?.employeeId;
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
 
     // RBAC validation:
     // If EMPLOYEE: can only update their own assigned task's status, actual_hours, or submit for review
-    if (userRole === 'EMPLOYEE') {
-      if (existing.assigned_employee_id !== userEmpId) {
-        return res.status(403).json({ error: 'You are only authorized to update tasks assigned to you.' });
-      }
+    if (userRole === 'EMPLOYEE' && existing.assigned_employee_id !== userEmpId) {
+      return res.status(403).json({ error: 'You are only authorized to update tasks assigned to you.' });
     }
 
     const {
@@ -310,6 +333,7 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
       description,
       status,
       priority,
+      assignmentId,
       assignedEmployeeId,
       dueDate,
       estimatedHours,
@@ -319,11 +343,13 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
     const updates: string[] = [];
     const params: any[] = [];
     const now = new Date().toISOString();
+    let statusOrPriorityChanged = false;
 
     // Check status change
     if (status && status !== existing.status) {
       updates.push('status = ?');
       params.push(status);
+      statusOrPriorityChanged = true;
 
       if (status === 'COMPLETED') {
         updates.push('completed_at = ?');
@@ -348,17 +374,29 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
       }
     }
 
-    // Only managers and admins can reassign, change title, priority, due date
-    if (userRole !== 'EMPLOYEE') {
+    // Managers, Team Leads, and Admins can reassign, change title, priority, milestone, due date
+    if (userRole !== 'EMPLOYEE' || isAdmin) {
       if (title) { updates.push('title = ?'); params.push(title.trim()); }
       if (description !== undefined) { updates.push('description = ?'); params.push(description); }
-      if (priority) { updates.push('priority = ?'); params.push(priority); }
+      if (priority && priority !== existing.priority) {
+        updates.push('priority = ?');
+        params.push(priority);
+        statusOrPriorityChanged = true;
+      }
       if (dueDate) { updates.push('due_date = ?'); params.push(dueDate); }
       if (estimatedHours !== undefined) { updates.push('estimated_hours = ?'); params.push(estimatedHours); }
 
+      // Milestone reassignment
+      if (assignmentId !== undefined && assignmentId !== existing.assignment_id) {
+        updates.push('assignment_id = ?');
+        params.push(assignmentId ? Number(assignmentId) : null);
+        statusOrPriorityChanged = true;
+      }
+
+      // Reassigning task to other teammates (Admins and Team Leads)
       if (assignedEmployeeId !== undefined && assignedEmployeeId !== existing.assigned_employee_id) {
         updates.push('assigned_employee_id = ?');
-        params.push(assignedEmployeeId);
+        params.push(assignedEmployeeId || null);
 
         await execute(`
           INSERT INTO task_activity_log (task_id, user_id, user_name, action, from_value, to_value, created_at)
@@ -371,7 +409,7 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
             await createNotification({
               userId: emp.user_id,
               title: 'Task Reassigned to You',
-              message: `Task "${existing.title}" has been reassigned to you.`,
+              message: `Task "${existing.title}" has been reassigned to you by ${req.user!.fullName || req.user!.email}.`,
               type: 'TASK_ASSIGNED',
               link: '/tasks'
             });
@@ -393,6 +431,17 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
       await execute(`UPDATE tasks SET ${updates.join(', ')} WHERE id = ?`, params);
     }
 
+    // Automatically recalculate milestone progress and stage if priority, status, or milestone changed
+    if (statusOrPriorityChanged) {
+      const newAssignmentId = assignmentId !== undefined ? (assignmentId ? Number(assignmentId) : null) : existing.assignment_id;
+      if (existing.assignment_id && existing.assignment_id !== newAssignmentId) {
+        await syncMilestoneStageAndProgress(existing.assignment_id);
+      }
+      if (newAssignmentId) {
+        await syncMilestoneStageAndProgress(newAssignmentId);
+      }
+    }
+
     await logAudit({
       userId: req.user!.id,
       userName: req.user!.fullName || req.user!.email,
@@ -401,7 +450,7 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
       resource: 'TASK',
       resourceId: taskId,
       ipAddress: req.ip,
-      beforeValue: `Status: ${existing.status}`,
+      beforeValue: `Status: ${existing.status}, Priority: ${existing.priority}`,
       afterValue: `Updated fields: ${updates.join(', ')}`
     });
 
@@ -412,16 +461,33 @@ router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
   }
 });
 
-// 5. Delete task (Admins/Managers)
-router.delete('/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: AuthRequest, res) => {
+// 5. Delete task (Admins/Managers/Team Leads)
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const taskId = Number(req.params.id);
-    const existing = await queryOne<{ title: string; task_code: string }>('SELECT title, task_code FROM tasks WHERE id = ?', [taskId]);
+    const existing = await queryOne<{ title: string; task_code: string; assignment_id: number | null; project_id: number; assigned_employee_id: number }>('SELECT title, task_code, assignment_id, project_id, assigned_employee_id FROM tasks WHERE id = ?', [taskId]);
     if (!existing) {
       return res.status(404).json({ error: 'Task not found' });
     }
 
+    const userRole = req.user?.role;
+    const userEmpId = req.user?.employeeId;
+    let canDelete = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN' || userRole === 'MANAGER';
+    if (!canDelete && userEmpId) {
+      const prj = await queryOne<{ manager_id: number }>('SELECT manager_id FROM projects WHERE id = ?', [existing.project_id]);
+      if (prj && prj.manager_id === userEmpId) canDelete = true;
+    }
+
+    if (!canDelete) {
+      return res.status(403).json({ error: 'Permission denied. Only team leads or administrators can delete tasks.' });
+    }
+
     await execute('DELETE FROM tasks WHERE id = ?', [taskId]);
+
+    // Automatically recalculate milestone progress and stage after task removal
+    if (existing.assignment_id) {
+      await syncMilestoneStageAndProgress(existing.assignment_id);
+    }
 
     await logAudit({
       userId: req.user!.id,

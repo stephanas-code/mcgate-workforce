@@ -20,8 +20,19 @@ function formatDuration(startIso: string, endIso: string): { minutes: number; fo
   };
 }
 
-// Helper to get server's current date string YYYY-MM-DD
-function getServerDate(): string {
+// Helper to get current date string YYYY-MM-DD in specific timezone or UTC
+function getServerDate(timeZone?: string): string {
+  try {
+    if (timeZone) {
+      const formatter = new Intl.DateTimeFormat('en-CA', {
+        timeZone,
+        year: 'numeric',
+        month: '2-digit',
+        day: '2-digit'
+      });
+      return formatter.format(new Date());
+    }
+  } catch (e) {}
   const now = new Date();
   const year = now.getFullYear();
   const month = String(now.getMonth() + 1).padStart(2, '0');
@@ -37,7 +48,8 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Authenticated user is not registered as an employee.' });
     }
 
-    const today = getServerDate();
+    const clientTz = (req.body.timezone as string) || undefined;
+    const today = getServerDate(clientTz);
     const serverTimestamp = new Date().toISOString();
 
     // Check if employee has already clocked in for today
@@ -52,7 +64,17 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
     );
 
     if (existing) {
-      const inTime = new Date(existing.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      let inTime = new Date(existing.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+      if (clientTz) {
+        try {
+          inTime = new Intl.DateTimeFormat('en-US', {
+            timeZone: clientTz,
+            hour: '2-digit',
+            minute: '2-digit',
+            hour12: true
+          }).format(new Date(existing.clock_in_time));
+        } catch (e) {}
+      }
       return res.status(400).json({
         error: `Duplicate clock-in rejected. You have already clocked in for today at ${inTime}.`,
         alreadyClockedIn: true,
@@ -61,16 +83,35 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
     }
 
     // Inspect server settings for working hours / late status
-    const settings = await queryOne<{ work_start_time: string; grace_period_minutes: number }>(
-      'SELECT work_start_time, grace_period_minutes FROM company_settings WHERE id = 1'
+    const settings = await queryOne<{ work_start_time: string; grace_period_minutes: number; timezone: string }>(
+      'SELECT work_start_time, grace_period_minutes, timezone FROM company_settings WHERE id = 1'
     );
 
+    const effectiveTz = clientTz || settings?.timezone || 'Europe/Berlin';
     let status = 'PRESENT';
     if (settings) {
       const [startH, startM] = settings.work_start_time.split(':').map(Number);
       const graceLimit = (startH * 60) + startM + (settings.grace_period_minutes || 15);
       const serverDateObj = new Date(serverTimestamp);
-      const currentMinutes = (serverDateObj.getHours() * 60) + serverDateObj.getMinutes();
+
+      let localHours = serverDateObj.getHours();
+      let localMinutes = serverDateObj.getMinutes();
+      try {
+        const parts = new Intl.DateTimeFormat('en-US', {
+          timeZone: effectiveTz,
+          hour: 'numeric',
+          minute: 'numeric',
+          hour12: false
+        }).formatToParts(serverDateObj);
+        const hPart = parts.find((p) => p.type === 'hour');
+        const mPart = parts.find((p) => p.type === 'minute');
+        if (hPart && mPart) {
+          localHours = parseInt(hPart.value, 10);
+          localMinutes = parseInt(mPart.value, 10);
+        }
+      } catch (e) {}
+
+      const currentMinutes = (localHours * 60) + localMinutes;
       if (currentMinutes > graceLimit) {
         status = 'LATE';
       }
@@ -78,7 +119,9 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
 
     const ipAddress = (req.headers['x-forwarded-for'] as string) || req.ip || '127.0.0.1';
     const deviceInfo = (req.headers['user-agent'] as string) || 'Standard Enterprise Browser';
-    const locationInfo = req.body.location || 'HQ Campus - Frankfurt';
+    const locationInfo = req.body.location
+      ? (clientTz ? `${req.body.location} (${clientTz})` : req.body.location)
+      : (clientTz ? `Remote Location (${clientTz})` : 'HQ Campus - Frankfurt');
     const sessionId = `sess-${employeeId}-${Date.now()}-${crypto.randomBytes(4).toString('hex')}`;
 
     // Insert attendance record (protected by DB UNIQUE constraint on employee_id, date)
@@ -100,7 +143,16 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
       sessionId, employeeId, attendanceId, serverTimestamp, serverTimestamp
     ]);
 
-    const formattedTime = new Date(serverTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    let formattedTime = new Date(serverTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    try {
+      formattedTime = new Intl.DateTimeFormat('en-US', {
+        timeZone: effectiveTz,
+        hour: '2-digit',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+      }).format(new Date(serverTimestamp));
+    } catch (e) {}
 
     await logAudit({
       userId: req.user!.id,
@@ -110,7 +162,7 @@ router.post('/clock-in', authenticateToken, async (req: AuthRequest, res) => {
       resource: 'ATTENDANCE',
       resourceId: attendanceId,
       ipAddress,
-      afterValue: `Clocked in at ${formattedTime} (${status}) from ${deviceInfo.substring(0, 60)}`
+      afterValue: `Clocked in at ${formattedTime} (${status}) from ${locationInfo}`
     });
 
     res.json({
@@ -142,11 +194,12 @@ router.post('/clock-out', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(400).json({ error: 'Authenticated user is not registered as an employee.' });
     }
 
-    const today = getServerDate();
+    const clientTz = (req.body.timezone as string) || undefined;
+    const today = getServerDate(clientTz);
     const serverTimestamp = new Date().toISOString();
 
-    // Check if employee clocked in today
-    const record = await queryOne<{
+    // Check if employee clocked in today or has an active session
+    let record = await queryOne<{
       id: number;
       clock_in_time: string;
       clock_out_time: string | null;
@@ -158,6 +211,19 @@ router.post('/clock-out', authenticateToken, async (req: AuthRequest, res) => {
     );
 
     if (!record) {
+      record = await queryOne<{
+        id: number;
+        clock_in_time: string;
+        clock_out_time: string | null;
+        work_session_id: string;
+        status: string;
+      }>(
+        'SELECT id, clock_in_time, clock_out_time, work_session_id, status FROM attendance WHERE employee_id = ? AND clock_out_time IS NULL ORDER BY id DESC LIMIT 1',
+        [employeeId]
+      );
+    }
+
+    if (!record) {
       return res.status(400).json({
         error: 'Cannot clock out: You have not clocked in for today yet. Clock-in is mandatory before clock-out.'
       });
@@ -165,7 +231,7 @@ router.post('/clock-out', authenticateToken, async (req: AuthRequest, res) => {
 
     if (record.clock_out_time) {
       return res.status(400).json({
-        error: `You have already clocked out for today at ${new Date(record.clock_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}.`
+        error: `You have already clocked out for today.`
       });
     }
 
@@ -197,8 +263,26 @@ router.post('/clock-out', authenticateToken, async (req: AuthRequest, res) => {
       WHERE session_id = ?
     `, [serverTimestamp, record.work_session_id]);
 
-    const formattedIn = new Date(record.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-    const formattedOut = new Date(serverTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    let formattedIn = new Date(record.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    let formattedOut = new Date(serverTimestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    if (clientTz) {
+      try {
+        formattedIn = new Intl.DateTimeFormat('en-US', {
+          timeZone: clientTz,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        }).format(new Date(record.clock_in_time));
+        formattedOut = new Intl.DateTimeFormat('en-US', {
+          timeZone: clientTz,
+          hour: '2-digit',
+          minute: '2-digit',
+          second: '2-digit',
+          hour12: true
+        }).format(new Date(serverTimestamp));
+      } catch (e) {}
+    }
 
     await logAudit({
       userId: req.user!.id,
@@ -240,10 +324,11 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
       });
     }
 
-    const today = getServerDate();
+    const clientTz = (req.query.timezone as string) || undefined;
+    const today = getServerDate(clientTz);
 
-    // Fetch today's record
-    const todayRecord = await queryOne<{
+    // Fetch today's record (or currently active session)
+    let todayRecord = await queryOne<{
       id: number;
       date: string;
       clock_in_time: string;
@@ -261,6 +346,13 @@ router.get('/me', authenticateToken, async (req: AuthRequest, res) => {
       'SELECT * FROM attendance WHERE employee_id = ? AND date = ?',
       [employeeId, today]
     );
+
+    if (!todayRecord) {
+      todayRecord = await queryOne<any>(
+        'SELECT * FROM attendance WHERE employee_id = ? AND clock_out_time IS NULL ORDER BY id DESC LIMIT 1',
+        [employeeId]
+      );
+    }
 
     // Filters for history
     const filter = (req.query.filter as string) || 'all';

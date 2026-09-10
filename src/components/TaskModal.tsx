@@ -6,11 +6,20 @@ import { TaskItem, TaskPriority } from '../types.ts';
 interface TaskModalProps {
   isOpen: boolean;
   onClose: () => void;
-  task?: TaskItem | null;
+  task?: TaskItem | any | null;
   onSuccess: () => void;
+  initialProjectId?: number;
+  initialAssignmentId?: number;
 }
 
-export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onSuccess }) => {
+export const TaskModal: React.FC<TaskModalProps> = ({
+  isOpen,
+  onClose,
+  task,
+  onSuccess,
+  initialProjectId,
+  initialAssignmentId
+}) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState<number | ''>('');
@@ -42,19 +51,19 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
         setEmployees(eList);
 
         if (task) {
-          setTitle(task.title);
-          setDescription(task.description);
-          setProjectId(task.project_id);
+          setTitle(task.title || '');
+          setDescription(task.description || '');
+          setProjectId(task.project_id || pList[0]?.id || '');
           setAssignmentId(task.assignment_id || '');
           setAssignedEmployeeId(task.assigned_employee_id || '');
-          setPriority(task.priority);
-          setDueDate(task.due_date);
+          setPriority(task.priority || 'MEDIUM');
+          setDueDate(task.due_date || '');
           setEstimatedHours(task.estimated_hours || 4);
         } else {
           setTitle('');
           setDescription('');
-          setProjectId(pList[0]?.id || '');
-          setAssignmentId('');
+          setProjectId(initialProjectId || pList[0]?.id || '');
+          setAssignmentId(initialAssignmentId || '');
           setAssignedEmployeeId(eList[0]?.id || '');
           setPriority('MEDIUM');
           const nextWeek = new Date();
@@ -68,7 +77,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
     };
 
     loadData();
-  }, [isOpen, task]);
+  }, [isOpen, task, initialProjectId, initialAssignmentId]);
 
   if (!isOpen) return null;
 
@@ -193,7 +202,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Linked Assignment
+                Project Milestone (Assignment)
               </label>
               <select
                 value={assignmentId}
@@ -203,10 +212,13 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
                 <option value="">None (Standalone Task)</option>
                 {filteredAssignments.map((a) => (
                   <option key={a.id} value={a.id}>
-                    {a.title}
+                    🚩 {a.title} {a.leadName ? `(${a.leadName})` : ''}
                   </option>
                 ))}
               </select>
+              <p className="mt-1 text-[11px] text-slate-500">
+                Tasks assigned here drive the milestone's weighted stage and completion %
+              </p>
             </div>
           </div>
 
@@ -223,7 +235,7 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
                 <option value="">Unassigned</option>
                 {employees.map((emp) => (
                   <option key={emp.id} value={emp.id}>
-                    {emp.first_name} {emp.last_name} ({emp.job_title})
+                    {emp.first_name} {emp.last_name} {emp.job_title ? `— ${emp.job_title}` : ''}
                   </option>
                 ))}
               </select>
@@ -231,19 +243,31 @@ export const TaskModal: React.FC<TaskModalProps> = ({ isOpen, onClose, task, onS
 
             <div>
               <label className="block text-xs font-bold text-slate-700 uppercase tracking-wider mb-1">
-                Priority
+                Priority & Milestone Weight
               </label>
               <select
                 value={priority}
                 onChange={(e) => setPriority(e.target.value as TaskPriority)}
-                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white"
+                className="w-full px-3 py-2 border border-slate-300 rounded-lg text-sm text-slate-800 focus:ring-2 focus:ring-blue-500 outline-none bg-white font-medium"
               >
-                <option value="LOW">Low</option>
-                <option value="MEDIUM">Medium</option>
-                <option value="HIGH">High</option>
-                <option value="URGENT">Urgent</option>
+                <option value="URGENT">🔴 Urgent (Weight 4x — Critical Milestone Driver)</option>
+                <option value="HIGH">🟠 High (Weight 3x — Major Deliverable)</option>
+                <option value="MEDIUM">🔵 Medium (Weight 2x — Standard Deliverable)</option>
+                <option value="LOW">⚪ Low (Weight 1x — Minor Support Item)</option>
               </select>
             </div>
+          </div>
+
+          {/* Priority Weight Explanation Box */}
+          <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-lg text-[11px] text-amber-900 flex items-start gap-2">
+            <span className="font-bold text-amber-700 shrink-0">⚡ Automated Progress:</span>
+            <span>
+              Assigning priority determines this task's statistical weight in milestone progress.
+              {priority === 'URGENT' && ' Urgent priority has 4x impact on milestone completion!'}
+              {priority === 'HIGH' && ' High priority has 3x impact on milestone completion.'}
+              {priority === 'MEDIUM' && ' Medium priority has 2x impact on milestone completion.'}
+              {priority === 'LOW' && ' Low priority has 1x impact on milestone completion.'}
+            </span>
           </div>
 
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

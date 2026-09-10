@@ -13,16 +13,22 @@ import {
   Info
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useTimezone } from '../context/TimezoneContext.tsx';
 import { api } from '../api.ts';
 import { AttendanceCard } from '../components/AttendanceCard.tsx';
 import { AttendanceCorrectionModal } from '../components/AttendanceCorrectionModal.tsx';
+import { Pagination } from '../components/Pagination.tsx';
 import { AttendanceRecord, LiveAttendanceEmployee } from '../types.ts';
 
 export const AttendanceView: React.FC = () => {
   const { user } = useAuth();
+  const { timezone, formatTime } = useTimezone();
   const [activeTab, setActiveTab] = useState<'my_history' | 'live_board' | 'open_sessions'>('my_history');
   const [historyFilter, setHistoryFilter] = useState<'all' | 'today' | 'this_week' | 'this_month'>('this_month');
   const [history, setHistory] = useState<AttendanceRecord[]>([]);
+  const [historyPage, setHistoryPage] = useState(1);
+  const [livePage, setLivePage] = useState(1);
+  const [openSessionsPage, setOpenSessionsPage] = useState(1);
   const [liveData, setLiveData] = useState<{
     today: string;
     metrics: any;
@@ -45,7 +51,7 @@ export const AttendanceView: React.FC = () => {
   const loadData = async () => {
     setIsLoading(true);
     try {
-      const myAtt = await api.getMyAttendance(historyFilter);
+      const myAtt = await api.getMyAttendance(historyFilter, timezone);
       setHistory(myAtt.history || []);
 
       if (isAdminOrManager) {
@@ -61,7 +67,7 @@ export const AttendanceView: React.FC = () => {
 
   useEffect(() => {
     loadData();
-  }, [historyFilter, user]);
+  }, [historyFilter, user, timezone]);
 
   return (
     <div className="space-y-6">
@@ -156,7 +162,10 @@ export const AttendanceView: React.FC = () => {
               {(['today', 'this_week', 'this_month', 'all'] as const).map((f) => (
                 <button
                   key={f}
-                  onClick={() => setHistoryFilter(f)}
+                  onClick={() => {
+                    setHistoryFilter(f);
+                    setHistoryPage(1);
+                  }}
                   className={`px-3 py-1 rounded-md text-xs font-semibold transition capitalize ${
                     historyFilter === f
                       ? 'bg-blue-600 text-white shadow-xs'
@@ -191,10 +200,12 @@ export const AttendanceView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  history.map((h) => {
-                    const inStr = new Date(h.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+                  history
+                    .slice((historyPage - 1) * 10, historyPage * 10)
+                    .map((h) => {
+                    const inStr = formatTime(h.clock_in_time, { hour: '2-digit', minute: '2-digit', second: undefined });
                     const outStr = h.clock_out_time
-                      ? new Date(h.clock_out_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                      ? formatTime(h.clock_out_time, { hour: '2-digit', minute: '2-digit', second: undefined })
                       : 'No clock-out (Open)';
 
                     return (
@@ -246,6 +257,14 @@ export const AttendanceView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={historyPage}
+            totalItems={history.length}
+            pageSize={10}
+            onPageChange={setHistoryPage}
+            itemLabel="attendance records"
+          />
         </div>
       )}
 
@@ -287,12 +306,14 @@ export const AttendanceView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {liveData?.records.map((r) => {
+                {(liveData?.records || [])
+                  .slice((livePage - 1) * 10, livePage * 10)
+                  .map((r) => {
                   const inStr = r.clockInTime
-                    ? new Date(r.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    ? formatTime(r.clockInTime, { hour: '2-digit', minute: '2-digit', second: undefined })
                     : '—';
                   const outStr = r.clockOutTime
-                    ? new Date(r.clockOutTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+                    ? formatTime(r.clockOutTime, { hour: '2-digit', minute: '2-digit', second: undefined })
                     : r.clockInTime ? 'Active (Open)' : '—';
 
                   return (
@@ -345,6 +366,14 @@ export const AttendanceView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={livePage}
+            totalItems={liveData?.records?.length || 0}
+            pageSize={10}
+            onPageChange={setLivePage}
+            itemLabel="team records"
+          />
         </div>
       )}
 
@@ -377,13 +406,15 @@ export const AttendanceView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  liveData?.openPastSessions.map((s) => (
+                  (liveData?.openPastSessions || [])
+                    .slice((openSessionsPage - 1) * 10, openSessionsPage * 10)
+                    .map((s) => (
                     <tr key={s.id} className="hover:bg-slate-50 transition">
                       <td className="px-4 py-3 font-semibold text-slate-900">{s.date}</td>
                       <td className="px-4 py-3 font-bold text-slate-800">{s.employeeName}</td>
                       <td className="px-4 py-3 text-slate-600">{s.department}</td>
                       <td className="px-4 py-3 font-mono text-emerald-700">
-                        {new Date(s.clockInTime).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                        {formatTime(s.clockInTime, { hour: '2-digit', minute: '2-digit', second: undefined })}
                       </td>
                       <td className="px-4 py-3">
                         <button
@@ -407,6 +438,14 @@ export const AttendanceView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={openSessionsPage}
+            totalItems={liveData?.openPastSessions?.length || 0}
+            pageSize={10}
+            onPageChange={setOpenSessionsPage}
+            itemLabel="open sessions"
+          />
         </div>
       )}
 

@@ -20,11 +20,13 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { ProjectItem } from '../types.ts';
 import { ProjectModal } from '../components/ProjectModal.tsx';
 import { ProjectDetailsModal } from '../components/ProjectDetailsModal.tsx';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const ProjectsView: React.FC = () => {
   const { user } = useAuth();
   const [projects, setProjects] = useState<ProjectItem[]>([]);
   const [filteredProjects, setFilteredProjects] = useState<ProjectItem[]>([]);
+  const [page, setPage] = useState(1);
   const [searchQuery, setSearchQuery] = useState('');
   const [statusFilter, setStatusFilter] = useState<string>('ALL');
 
@@ -72,6 +74,7 @@ export const ProjectsView: React.FC = () => {
       result = result.filter((p) => p.status === statusFilter);
     }
     setFilteredProjects(result);
+    setPage(1);
   }, [searchQuery, statusFilter, projects]);
 
   const handleOpenDetails = (p: ProjectItem) => {
@@ -164,7 +167,9 @@ export const ProjectsView: React.FC = () => {
               : 'No projects registered. Click "Initiate Project" to add one.'}
           </div>
         ) : (
-          filteredProjects.map((p) => (
+          filteredProjects
+            .slice((page - 1) * 10, page * 10)
+            .map((p) => (
             <div
               key={p.id}
               id={`project-card-${p.id}`}
@@ -253,6 +258,14 @@ export const ProjectsView: React.FC = () => {
           ))
         )}
       </div>
+
+      <Pagination
+        currentPage={page}
+        totalItems={filteredProjects.length}
+        pageSize={10}
+        onPageChange={setPage}
+        itemLabel="projects"
+      />
 
       {/* New Project Creation Modal with Auto-Code & Documents Upload */}
       <ProjectModal

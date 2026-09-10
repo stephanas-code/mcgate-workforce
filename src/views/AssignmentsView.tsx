@@ -18,10 +18,12 @@ import { AssignmentItem } from '../types.ts';
 import { AssignmentModal } from '../components/AssignmentModal.tsx';
 import { TaskModal } from '../components/TaskModal.tsx';
 import { TaskDetailModal } from '../components/TaskDetailModal.tsx';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const AssignmentsView: React.FC = () => {
   const { user } = useAuth();
   const [assignments, setAssignments] = useState<AssignmentItem[]>([]);
+  const [page, setPage] = useState(1);
   const [expandedIds, setExpandedIds] = useState<number[]>([]);
   const [assignmentTasks, setAssignmentTasks] = useState<Record<number, any[]>>({});
   const [isLoading, setIsLoading] = useState(false);
@@ -116,7 +118,9 @@ export const AssignmentsView: React.FC = () => {
             No assignments recorded. Click "Create Assignment" to initiate one.
           </div>
         ) : (
-          assignments.map((a) => {
+          assignments
+            .slice((page - 1) * 10, page * 10)
+            .map((a) => {
             const isExpanded = expandedIds.includes(a.id);
             const tasks = assignmentTasks[a.id] || [];
 
@@ -245,6 +249,14 @@ export const AssignmentsView: React.FC = () => {
           })
         )}
       </div>
+
+      <Pagination
+        currentPage={page}
+        totalItems={assignments.length}
+        pageSize={10}
+        onPageChange={setPage}
+        itemLabel="assignments"
+      />
 
       {/* Modals */}
       <AssignmentModal

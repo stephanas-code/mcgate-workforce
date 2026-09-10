@@ -2,6 +2,8 @@ import { Router } from 'express';
 import { queryOne, queryAll, execute } from '../db.ts';
 import { authenticateToken, AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
+import { createNotification } from '../notifications.ts';
+import { calculateMilestoneMetrics } from '../milestones.ts';
 
 const router = Router();
 
@@ -152,8 +154,45 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Project not found.' });
     }
 
-    const assignments = await queryAll('SELECT * FROM assignments WHERE project_id = ? ORDER BY created_at ASC', [id]);
-    const tasks = await queryAll('SELECT * FROM tasks WHERE project_id = ? ORDER BY created_at ASC', [id]);
+    const rawAssignments = await queryAll<any>('SELECT a.*, e.first_name as lead_first, e.last_name as lead_last FROM assignments a LEFT JOIN employees e ON e.id = a.lead_employee_id WHERE a.project_id = ? ORDER BY a.created_at ASC', [id]);
+    
+    // Enrich each milestone with priority-weighted progress and status metrics
+    const enrichedAssignments = await Promise.all(rawAssignments.map(async (a) => {
+      const metrics = await calculateMilestoneMetrics(a.id);
+      return {
+        ...a,
+        leadName: a.lead_first ? `${a.lead_first} ${a.lead_last}` : 'Unassigned',
+        ...metrics,
+        status: metrics.totalTasks > 0 ? metrics.newStatus : a.status
+      };
+    }));
+
+    const tasks = await queryAll<any>(`
+      SELECT 
+        t.*,
+        e.first_name as assignee_first,
+        e.last_name as assignee_last,
+        e.employee_code as assignee_code,
+        a.title as assignment_title
+      FROM tasks t
+      LEFT JOIN employees e ON e.id = t.assigned_employee_id
+      LEFT JOIN assignments a ON a.id = t.assignment_id
+      WHERE t.project_id = ?
+      ORDER BY 
+        CASE t.priority 
+          WHEN 'URGENT' THEN 1 
+          WHEN 'HIGH' THEN 2 
+          WHEN 'MEDIUM' THEN 3 
+          ELSE 4 
+        END, t.due_date ASC
+    `, [id]);
+
+    const formattedTasks = tasks.map(t => ({
+      ...t,
+      assigneeName: t.assignee_first ? `${t.assignee_first} ${t.assignee_last}` : 'Unassigned',
+      isOverdue: t.status !== 'COMPLETED' && t.status !== 'CANCELLED' && t.due_date < new Date().toISOString().split('T')[0]
+    }));
+
     const documents = await queryAll(`
       SELECT id, project_id, filename, original_name, file_size, file_extension, mime_type, uploaded_by_user_id, uploaded_by_name, created_at
       FROM project_documents
@@ -165,8 +204,8 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       ...project,
       managerName: project.manager_first ? `${project.manager_first} ${project.manager_last}` : 'Unassigned',
       target_date: project.expected_completion_date,
-      assignments,
-      tasks,
+      assignments: enrichedAssignments,
+      tasks: formattedTasks,
       documents
     });
   } catch (err: any) {
@@ -271,6 +310,108 @@ router.post('/', authenticateToken, async (req: AuthRequest, res) => {
   } catch (err: any) {
     console.error('Project creation failed:', err);
     res.status(500).json({ error: 'Failed to create project.' });
+  }
+});
+
+// 3b. Update / Reassign project (Admins have right to reassign projects to other teammates)
+router.patch('/:id', authenticateToken, async (req: AuthRequest, res) => {
+  try {
+    const projectId = Number(req.params.id);
+    const existing = await queryOne<any>('SELECT * FROM projects WHERE id = ?', [projectId]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Project not found.' });
+    }
+
+    const userRole = req.user?.role;
+    const userEmpId = req.user?.employeeId;
+    const isAdmin = userRole === 'SUPER_ADMIN' || userRole === 'ADMIN';
+    const isCurrentManager = userEmpId && existing.manager_id === userEmpId;
+
+    if (!isAdmin && !isCurrentManager) {
+      return res.status(403).json({ error: 'Permission denied. Only Admins or the Project Lead may update this project.' });
+    }
+
+    const { name, description, managerId, departmentId, status, targetDate } = req.body;
+    const updates: string[] = [];
+    const params: any[] = [];
+    const now = new Date().toISOString();
+
+    if (name && name.trim()) {
+      updates.push('name = ?');
+      params.push(name.trim());
+    }
+    if (description !== undefined) {
+      updates.push('description = ?');
+      params.push(description);
+    }
+    if (departmentId !== undefined) {
+      updates.push('department_id = ?');
+      params.push(departmentId || null);
+    }
+    if (status) {
+      updates.push('status = ?');
+      params.push(status);
+    }
+    if (targetDate !== undefined) {
+      updates.push('expected_completion_date = ?');
+      params.push(targetDate || null);
+    }
+
+    // Manager / Lead Reassignment: Admins have full rights to reassign project leads
+    let reassigned = false;
+    if (managerId !== undefined && managerId !== existing.manager_id) {
+      if (!isAdmin) {
+        return res.status(403).json({ error: 'Permission denied. Only Administrators have the authority to reassign project leadership.' });
+      }
+      updates.push('manager_id = ?');
+      params.push(managerId || null);
+      reassigned = true;
+    }
+
+    if (updates.length > 0) {
+      updates.push('updated_at = ?');
+      params.push(now);
+      params.push(projectId);
+
+      await execute(`UPDATE projects SET ${updates.join(', ')} WHERE id = ?`, params);
+    }
+
+    // Handle reassignment notification & audit log
+    if (reassigned && managerId) {
+      const newManager = await queryOne<{ user_id: number; first_name: string; last_name: string }>(
+        'SELECT user_id, first_name, last_name FROM employees WHERE id = ?',
+        [managerId]
+      );
+      if (newManager) {
+        await createNotification({
+          userId: newManager.user_id,
+          title: 'Project Leadership Designation',
+          message: `You have been designated as Project Lead for "${existing.name}" (${existing.code}) by ${req.user!.fullName || req.user!.email}.`,
+          type: 'PROJECT_ASSIGNED',
+          link: '/projects'
+        });
+      }
+    }
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: reassigned ? 'PROJECT_REASSIGNED' : 'PROJECT_UPDATED',
+      resource: 'PROJECT',
+      resourceId: projectId,
+      ipAddress: req.ip,
+      beforeValue: `Manager: ${existing.manager_id}, Status: ${existing.status}`,
+      afterValue: `Updated: ${updates.join(', ')}`
+    });
+
+    res.json({
+      success: true,
+      message: reassigned ? 'Project reassigned successfully.' : 'Project updated successfully.'
+    });
+  } catch (err: any) {
+    console.error('Project update/reassign error:', err);
+    res.status(500).json({ error: 'Failed to update or reassign project.' });
   }
 });
 

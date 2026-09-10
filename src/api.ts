@@ -72,20 +72,24 @@ export const api = {
     }),
 
   // Attendance
-  clockIn: (location?: string) =>
-    request<{ success: boolean; message: string; record: any }>('/api/attendance/clock-in', {
+  clockIn: (payload?: string | { location?: string; timezone?: string }) => {
+    const body = typeof payload === 'string' ? { location: payload } : (payload || {});
+    return request<{ success: boolean; message: string; record: any }>('/api/attendance/clock-in', {
       method: 'POST',
-      body: JSON.stringify({ location })
-    }),
+      body: JSON.stringify(body)
+    });
+  },
 
-  clockOut: () =>
+  clockOut: (payload?: { timezone?: string }) =>
     request<{ success: boolean; message: string; record: any }>('/api/attendance/clock-out', {
-      method: 'POST'
+      method: 'POST',
+      body: JSON.stringify(payload || {})
     }),
 
-  getMyAttendance: (filter = 'all', startDate?: string, endDate?: string) => {
+  getMyAttendance: (filter = 'all', startDate?: string, endDate?: string, timezone?: string) => {
     let url = `/api/attendance/me?filter=${filter}`;
     if (startDate && endDate) url += `&startDate=${startDate}&endDate=${endDate}`;
+    if (timezone) url += `&timezone=${encodeURIComponent(timezone)}`;
     return request<{ today: any; history: any[] }>(url);
   },
 
@@ -183,10 +187,27 @@ export const api = {
       body: JSON.stringify(data)
     }),
 
+  deleteAssignment: (id: number) =>
+    request<{ success: boolean; message: string }>(`/api/assignments/${id}`, {
+      method: 'DELETE'
+    }),
+
   // Projects
   getProjects: () => request<any[]>('/api/projects'),
 
   getProjectById: (id: number) => request<any>(`/api/projects/${id}`),
+
+  updateProject: (id: number, data: any) =>
+    request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
+
+  reassignProject: (id: number, data: { managerId: number; notes?: string }) =>
+    request<{ success: boolean; message: string }>(`/api/projects/${id}`, {
+      method: 'PATCH',
+      body: JSON.stringify(data)
+    }),
 
   generateProjectCode: (name: string) =>
     request<{ code: string }>(`/api/projects/generate-code?name=${encodeURIComponent(name)}`),
@@ -272,6 +293,7 @@ export const api = {
   // Company Settings
   getSettings: () => request<any>('/api/settings'),
   updateSettings: (data: any) => request<any>('/api/settings', { method: 'PUT', body: JSON.stringify(data) }),
+  clearMockData: () => request<any>('/api/settings/reset-mock-data', { method: 'POST' }),
 
   // Global Search
   searchGlobal: (query: string) => request<any>(`/api/search?q=${encodeURIComponent(query)}`)

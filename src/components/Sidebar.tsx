@@ -10,7 +10,8 @@ import {
   ShieldAlert,
   Settings,
   ShieldCheck,
-  Server
+  Server,
+  X
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
 
@@ -98,17 +99,30 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentView, onNavigate, isOpe
       {isOpen && (
         <div
           onClick={onCloseMobile}
-          className="fixed inset-0 bg-slate-900/60 z-30 lg:hidden backdrop-blur-xs"
+          className="fixed inset-0 bg-slate-900/60 z-35 lg:hidden backdrop-blur-xs transition-opacity"
+          aria-hidden="true"
         />
       )}
 
       <aside
-        className={`fixed lg:static top-16 bottom-0 left-0 w-64 bg-slate-900 text-slate-300 z-30 flex flex-col justify-between border-r border-slate-800 transition-transform duration-200 ease-in-out ${
+        className={`fixed lg:static top-16 bottom-0 left-0 w-64 bg-slate-900 text-slate-300 z-40 flex flex-col justify-between border-r border-slate-800 transition-transform duration-200 ease-in-out shadow-2xl lg:shadow-none ${
           isOpen ? 'translate-x-0' : '-translate-x-full lg:translate-x-0'
         }`}
       >
         {/* Navigation list */}
-        <div className="p-4 space-y-6 overflow-y-auto">
+        <div className="p-4 space-y-5 overflow-y-auto">
+          {/* Mobile Close Bar */}
+          <div className="lg:hidden flex items-center justify-between pb-3 border-b border-slate-800">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">Navigation Menu</span>
+            <button
+              onClick={onCloseMobile}
+              className="p-1.5 text-slate-400 hover:text-white rounded-lg hover:bg-slate-800 transition cursor-pointer"
+              aria-label="Close navigation"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
           <div>
             <div className="text-[11px] font-bold uppercase tracking-wider text-slate-500 px-3 mb-2">
               Workforce Core

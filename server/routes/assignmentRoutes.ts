@@ -3,6 +3,7 @@ import { queryOne, queryAll, execute } from '../db.ts';
 import { authenticateToken, requireRoles, AuthRequest } from '../auth.ts';
 import { createNotification } from '../notifications.ts';
 import { logAudit } from '../audit.ts';
+import { calculateMilestoneMetrics } from '../milestones.ts';
 
 const router = Router();
 
@@ -57,27 +58,16 @@ router.get('/', authenticateToken, async (req: AuthRequest, res) => {
       ORDER BY a.created_at DESC
     `, params);
 
-    // Fetch tasks counts for each assignment to calculate progress
+    // Fetch tasks counts and priority-weighted progress for each assignment/milestone
     const enriched = await Promise.all(assignments.map(async (a) => {
-      const stats = await queryOne<{ total: number; completed: number }>(`
-        SELECT 
-          COUNT(*) as total,
-          SUM(CASE WHEN status = 'COMPLETED' THEN 1 ELSE 0 END) as completed
-        FROM tasks
-        WHERE assignment_id = ?
-      `, [a.id]);
-
-      const totalTasks = stats?.total || 0;
-      const completedTasks = stats?.completed || 0;
-      const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+      const metrics = await calculateMilestoneMetrics(a.id);
 
       return {
         ...a,
         leadName: a.lead_first ? `${a.lead_first} ${a.lead_last}` : 'Unassigned',
-        totalTasks,
-        completedTasks,
-        progressPercent,
-        progressText: `${completedTasks}/${totalTasks} tasks completed — ${progressPercent}%`
+        ...metrics,
+        status: metrics.totalTasks > 0 ? metrics.newStatus : a.status,
+        progressText: `${metrics.completedTasks}/${metrics.totalTasks} tasks (${metrics.progressPercent}% weighted progress)`
       };
     }));
 
@@ -111,25 +101,38 @@ router.get('/:id', authenticateToken, async (req: AuthRequest, res) => {
       return res.status(404).json({ error: 'Assignment not found.' });
     }
 
-    const tasks = await queryAll(`
-      SELECT t.*, e.first_name, e.last_name
+    const tasks = await queryAll<any>(`
+      SELECT 
+        t.*, 
+        e.first_name, 
+        e.last_name,
+        e.employee_code as assignee_code
       FROM tasks t
       LEFT JOIN employees e ON e.id = t.assigned_employee_id
       WHERE t.assignment_id = ?
-      ORDER BY t.created_at ASC
+      ORDER BY 
+        CASE t.priority 
+          WHEN 'URGENT' THEN 1 
+          WHEN 'HIGH' THEN 2 
+          WHEN 'MEDIUM' THEN 3 
+          ELSE 4 
+        END, t.due_date ASC
     `, [id]);
 
-    const totalTasks = tasks.length;
-    const completedTasks = tasks.filter((t: any) => t.status === 'COMPLETED').length;
-    const progressPercent = totalTasks > 0 ? Math.round((completedTasks / totalTasks) * 100) : 0;
+    const formattedTasks = tasks.map(t => ({
+      ...t,
+      assigneeName: t.first_name ? `${t.first_name} ${t.last_name}` : 'Unassigned',
+      isOverdue: t.status !== 'COMPLETED' && t.status !== 'CANCELLED' && t.due_date < new Date().toISOString().split('T')[0]
+    }));
+
+    const metrics = await calculateMilestoneMetrics(id);
 
     res.json({
       ...assignment,
       leadName: assignment.lead_first ? `${assignment.lead_first} ${assignment.lead_last}` : 'Unassigned',
-      totalTasks,
-      completedTasks,
-      progressPercent,
-      tasks
+      ...metrics,
+      status: metrics.totalTasks > 0 ? metrics.newStatus : assignment.status,
+      tasks: formattedTasks
     });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to retrieve assignment.' });
@@ -236,6 +239,38 @@ router.patch('/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MA
     res.json({ success: true, message: 'Assignment updated successfully.' });
   } catch (err: any) {
     res.status(500).json({ error: 'Failed to update assignment.' });
+  }
+});
+
+// 5. Delete milestone / assignment
+router.delete('/:id', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN', 'MANAGER'), async (req: AuthRequest, res) => {
+  try {
+    const id = Number(req.params.id);
+    const existing = await queryOne<{ title: string; project_id: number }>('SELECT title, project_id FROM assignments WHERE id = ?', [id]);
+    if (!existing) {
+      return res.status(404).json({ error: 'Milestone assignment not found.' });
+    }
+
+    // Detach any tasks assigned to this milestone
+    await execute('UPDATE tasks SET assignment_id = NULL WHERE assignment_id = ?', [id]);
+
+    // Delete milestone
+    await execute('DELETE FROM assignments WHERE id = ?', [id]);
+
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'ASSIGNMENT_DELETED',
+      resource: 'ASSIGNMENT',
+      resourceId: id,
+      ipAddress: req.ip,
+      beforeValue: `Deleted milestone: ${existing.title} (Project: ${existing.project_id})`
+    });
+
+    res.json({ success: true, message: 'Milestone deleted successfully.' });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to delete milestone.' });
   }
 });
 

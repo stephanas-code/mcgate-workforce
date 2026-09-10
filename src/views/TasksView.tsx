@@ -20,10 +20,12 @@ import { useAuth } from '../context/AuthContext.tsx';
 import { TaskItem, TaskPriority, TaskStatus } from '../types.ts';
 import { TaskModal } from '../components/TaskModal.tsx';
 import { TaskDetailModal } from '../components/TaskDetailModal.tsx';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const TasksView: React.FC = () => {
   const { user } = useAuth();
   const [tasks, setTasks] = useState<TaskItem[]>([]);
+  const [currentPage, setCurrentPage] = useState(1);
   const [viewMode, setViewMode] = useState<'list' | 'kanban'>('kanban');
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedStatus, setSelectedStatus] = useState<string>('');
@@ -58,11 +60,13 @@ export const TasksView: React.FC = () => {
   };
 
   useEffect(() => {
+    setCurrentPage(1);
     loadTasks();
   }, [selectedStatus, selectedPriority, selectedProjectId]);
 
   const handleSearchSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    setCurrentPage(1);
     loadTasks();
   };
 
@@ -364,7 +368,9 @@ export const TasksView: React.FC = () => {
                     </td>
                   </tr>
                 ) : (
-                  tasks.map((t) => (
+                  tasks
+                    .slice((currentPage - 1) * 10, currentPage * 10)
+                    .map((t) => (
                     <tr
                       key={t.id}
                       onClick={() => setSelectedTaskId(t.id)}
@@ -400,6 +406,14 @@ export const TasksView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={currentPage}
+            totalItems={tasks.length}
+            pageSize={10}
+            onPageChange={setCurrentPage}
+            itemLabel="tasks"
+          />
         </div>
       )}
 

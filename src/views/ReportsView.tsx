@@ -11,10 +11,13 @@ import {
   TrendingUp
 } from 'lucide-react';
 import { api } from '../api.ts';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const ReportsView: React.FC = () => {
   const [attReport, setAttReport] = useState<any>(null);
   const [tasksReport, setTasksReport] = useState<any>(null);
+  const [deptPage, setDeptPage] = useState(1);
+  const [empPage, setEmpPage] = useState(1);
   const [dateRange, setDateRange] = useState({
     from: new Date(Date.now() - 30 * 86400000).toISOString().split('T')[0],
     to: new Date().toISOString().split('T')[0]
@@ -170,7 +173,9 @@ export const ReportsView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {attReport?.byDepartment?.map((d: any) => (
+              {(attReport?.byDepartment || [])
+                .slice((deptPage - 1) * 10, deptPage * 10)
+                .map((d: any) => (
                 <tr key={d.department_name} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-semibold text-slate-900">{d.department_name}</td>
                   <td className="px-4 py-3">{d.session_count}</td>
@@ -180,6 +185,14 @@ export const ReportsView: React.FC = () => {
               ))}
             </tbody>
           </table>
+
+          <Pagination
+            currentPage={deptPage}
+            totalItems={attReport?.byDepartment?.length || 0}
+            pageSize={10}
+            onPageChange={setDeptPage}
+            itemLabel="departments"
+          />
         </div>
 
         {/* Employee Workload & Deliverables */}
@@ -200,7 +213,9 @@ export const ReportsView: React.FC = () => {
               </tr>
             </thead>
             <tbody className="divide-y divide-slate-100 text-slate-700">
-              {tasksReport?.byEmployee?.map((e: any) => (
+              {(tasksReport?.byEmployee || [])
+                .slice((empPage - 1) * 10, empPage * 10)
+                .map((e: any) => (
                 <tr key={e.employee_code} className="hover:bg-slate-50">
                   <td className="px-4 py-3 font-semibold text-slate-900">
                     {e.first_name} {e.last_name}
@@ -219,6 +234,14 @@ export const ReportsView: React.FC = () => {
               ))}
             </tbody>
           </table>
+
+          <Pagination
+            currentPage={empPage}
+            totalItems={tasksReport?.byEmployee?.length || 0}
+            pageSize={10}
+            onPageChange={setEmpPage}
+            itemLabel="employees"
+          />
         </div>
       </div>
     </div>

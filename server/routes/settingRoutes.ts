@@ -2,6 +2,7 @@ import { Router } from 'express';
 import { queryOne, execute } from '../db.ts';
 import { authenticateToken, requireRoles, AuthRequest } from '../auth.ts';
 import { logAudit } from '../audit.ts';
+import { clearAllMockData } from '../schema.ts';
 
 const router = Router();
 
@@ -83,6 +84,26 @@ router.put('/', authenticateToken, requireRoles('SUPER_ADMIN'), async (req: Auth
     res.json({ success: true, message: 'Settings saved successfully.' });
   } catch (err) {
     res.status(500).json({ error: 'Failed to update settings.' });
+  }
+});
+
+// Reset / Clear all mockup data so system is completely clean and realtime
+router.post('/reset-mock-data', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN'), async (req: AuthRequest, res) => {
+  try {
+    await clearAllMockData();
+    await logAudit({
+      userId: req.user!.id,
+      userName: req.user!.fullName || req.user!.email,
+      userRole: req.user!.role,
+      action: 'SYSTEM_PURGE',
+      resource: 'SYSTEM',
+      resourceId: 'ALL_MOCK_DATA',
+      ipAddress: req.ip,
+      afterValue: 'Purged all mockup data: tasks, assignments, projects, attendance, documents, logs'
+    });
+    res.json({ success: true, message: 'All mockup data cleared successfully. System is realtime and clean.' });
+  } catch (err) {
+    res.status(500).json({ error: 'Failed to clear mockup data.' });
   }
 });
 

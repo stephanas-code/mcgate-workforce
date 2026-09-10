@@ -7,9 +7,10 @@ interface AssignmentModalProps {
   isOpen: boolean;
   onClose: () => void;
   onSuccess: () => void;
+  initialProjectId?: number;
 }
 
-export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSuccess }) => {
+export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClose, onSuccess, initialProjectId }) => {
   const [title, setTitle] = useState('');
   const [description, setDescription] = useState('');
   const [projectId, setProjectId] = useState<number | ''>('');
@@ -38,7 +39,7 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClos
         setTeams(tList);
         setEmployees(eList);
 
-        setProjectId(pList[0]?.id || '');
+        setProjectId(initialProjectId || pList[0]?.id || '');
         setAssignedTeamId(tList[0]?.id || '');
         setLeadEmployeeId(eList[0]?.id || '');
 
@@ -51,7 +52,7 @@ export const AssignmentModal: React.FC<AssignmentModalProps> = ({ isOpen, onClos
     };
 
     loadData();
-  }, [isOpen]);
+  }, [isOpen, initialProjectId]);
 
   if (!isOpen) return null;
 

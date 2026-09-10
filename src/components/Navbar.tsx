@@ -9,25 +9,40 @@ import {
   ShieldCheck,
   UserCheck,
   Check,
-  Building2
+  Building2,
+  Menu,
+  X,
+  Globe,
+  MapPin
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext.tsx';
+import { useTimezone } from '../context/TimezoneContext.tsx';
 import { api } from '../api.ts';
 import { NotificationItem } from '../types.ts';
+import { TimezoneSelectorModal } from './TimezoneSelectorModal.tsx';
 
 interface NavbarProps {
   onOpenSearch: () => void;
   onNavigate: (view: string) => void;
-  currentView: string;
+  currentView?: string;
+  onToggleSidebar?: () => void;
+  isSidebarOpen?: boolean;
 }
 
-export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
+export const Navbar: React.FC<NavbarProps> = ({
+  onOpenSearch,
+  onNavigate,
+  onToggleSidebar,
+  isSidebarOpen = false
+}) => {
   const { user, todayAttendance, demoUsers, switchRole, logout } = useAuth();
+  const { timezone, locationName, formatTime, details } = useTimezone();
   const [notifications, setNotifications] = useState<NotificationItem[]>([]);
   const [unreadCount, setUnreadCount] = useState<number>(0);
   const [isNotifOpen, setIsNotifOpen] = useState(false);
   const [isRoleMenuOpen, setIsRoleMenuOpen] = useState(false);
   const [isProfileOpen, setIsProfileOpen] = useState(false);
+  const [isTimezoneModalOpen, setIsTimezoneModalOpen] = useState(false);
 
   const notifRef = useRef<HTMLDivElement>(null);
   const roleRef = useRef<HTMLDivElement>(null);
@@ -89,7 +104,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
 
   const isClockedIn = Boolean(todayAttendance?.clock_in_time);
   const clockInFormatted = todayAttendance?.clock_in_time
-    ? new Date(todayAttendance.clock_in_time).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    ? formatTime(todayAttendance.clock_in_time, { hour: '2-digit', minute: '2-digit', second: undefined })
     : null;
 
   const roleColors: Record<string, string> = {
@@ -107,22 +122,41 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
   };
 
   return (
-    <header className="h-16 bg-white border-b border-slate-200 px-4 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs">
+    <header className="h-16 bg-white border-b border-slate-200 px-3 sm:px-6 flex items-center justify-between sticky top-0 z-30 shadow-xs w-full max-w-full">
       {/* Brand & Platform Identity */}
-      <div className="flex items-center gap-3">
-        <div className="w-9 h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black tracking-wider text-base shadow-sm border border-slate-800">
+      <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+        {/* Mobile Hamburger Toggle Button */}
+        {onToggleSidebar && (
+          <button
+            id="mobile-sidebar-hamburger"
+            type="button"
+            onClick={onToggleSidebar}
+            className="lg:hidden p-2 -ml-1 text-slate-700 hover:text-slate-900 hover:bg-slate-100 rounded-lg transition shrink-0 cursor-pointer focus:outline-hidden focus:ring-2 focus:ring-blue-500"
+            aria-label={isSidebarOpen ? "Close navigation menu" : "Open navigation menu"}
+            title="Toggle Navigation Menu"
+          >
+            {isSidebarOpen ? (
+              <X className="w-5 h-5 text-slate-800" />
+            ) : (
+              <Menu className="w-5 h-5 text-slate-800" />
+            )}
+          </button>
+        )}
+
+        <div className="w-8 h-8 sm:w-9 sm:h-9 bg-slate-900 rounded-lg flex items-center justify-center text-white font-black tracking-wider text-sm sm:text-base shadow-sm border border-slate-800 shrink-0">
           <span className="text-blue-400">M</span>G
         </div>
-        <div>
-          <div className="flex items-center gap-2">
-            <span className="font-bold text-slate-900 text-base tracking-tight">
-              McGate Technologies
+        <div className="min-w-0">
+          <div className="flex items-center gap-1.5 sm:gap-2">
+            <span className="font-bold text-slate-900 text-sm sm:text-base tracking-tight truncate">
+              <span className="hidden sm:inline">McGate Technologies</span>
+              <span className="sm:hidden">McGate</span>
             </span>
-            <span className="hidden md:inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200">
+            <span className="hidden md:inline-flex items-center text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-slate-100 text-slate-600 border border-slate-200 shrink-0">
               Workforce OS
             </span>
           </div>
-          <div className="text-[11px] text-slate-500 hidden sm:block">
+          <div className="text-[11px] text-slate-500 hidden sm:block truncate">
             Internal Operations & Attendance Hub
           </div>
         </div>
@@ -132,7 +166,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
       <div className="hidden lg:flex items-center flex-1 max-w-md mx-8">
         <button
           onClick={onOpenSearch}
-          className="w-full flex items-center justify-between px-3.5 py-2 text-sm text-slate-400 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition"
+          className="w-full flex items-center justify-between px-3.5 py-2 text-sm text-slate-400 bg-slate-50 hover:bg-slate-100 border border-slate-200 rounded-lg transition cursor-pointer"
         >
           <div className="flex items-center gap-2.5">
             <Search className="w-4 h-4 text-slate-400" />
@@ -145,27 +179,30 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
       </div>
 
       {/* Right Controls */}
-      <div className="flex items-center gap-2 sm:gap-3">
+      <div className="flex items-center gap-1 sm:gap-2 shrink-0">
         {/* Mobile Search Icon */}
         <button
+          id="mobile-search-trigger"
           onClick={onOpenSearch}
-          className="lg:hidden p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg"
+          className="lg:hidden p-1.5 sm:p-2 text-slate-500 hover:text-slate-800 hover:bg-slate-100 rounded-lg transition shrink-0 cursor-pointer"
           title="Search"
+          aria-label="Search"
         >
-          <Search className="w-5 h-5" />
+          <Search className="w-4 h-4 sm:w-5 sm:h-5" />
         </button>
 
         {/* Real-Time Attendance Status Indicator */}
         <button
+          id="navbar-attendance-btn"
           onClick={() => onNavigate('attendance')}
-          className={`flex items-center gap-2 px-3 py-1.5 rounded-full text-xs font-semibold border transition ${
+          className={`flex items-center gap-1.5 px-2 sm:px-3 py-1 sm:py-1.5 rounded-full text-[11px] sm:text-xs font-semibold border transition shrink-0 cursor-pointer ${
             isClockedIn
               ? 'bg-emerald-50 text-emerald-800 border-emerald-300 hover:bg-emerald-100'
               : 'bg-amber-50 text-amber-800 border-amber-300 hover:bg-amber-100'
           }`}
           title="Click to view Attendance Hub"
         >
-          <span className="relative flex h-2 w-2">
+          <span className="relative flex h-2 w-2 shrink-0">
             <span
               className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
                 isClockedIn ? 'bg-emerald-400' : 'bg-amber-400'
@@ -177,28 +214,52 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
               }`}
             />
           </span>
-          <span className="hidden sm:inline">
+          <span className="hidden md:inline">
             {isClockedIn ? `Clocked In • ${clockInFormatted}` : 'Clock-In Required'}
           </span>
-          <span className="sm:hidden">{isClockedIn ? 'Clocked In' : 'Clock In'}</span>
+          <span className="md:hidden hidden xs:inline">
+            {isClockedIn ? 'Clocked In' : 'Clock In'}
+          </span>
+          <span className="xs:hidden">
+            {isClockedIn ? 'In' : 'Clock'}
+          </span>
+        </button>
+
+        {/* Global Local Time & Timezone Switcher Pill */}
+        <button
+          id="navbar-timezone-btn"
+          type="button"
+          onClick={() => setIsTimezoneModalOpen(true)}
+          className="flex items-center gap-1.5 px-2 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer shrink-0"
+          title={`Active Timezone: ${locationName} (${timezone}) • Click to select region or detect GPS location`}
+        >
+          <Globe className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
+          <span className="font-mono text-slate-900 hidden sm:inline">{details.currentTime}</span>
+          <span className="text-[11px] text-slate-500 hidden md:inline">({details.abbreviation || details.city})</span>
+          <span className="text-[10px] px-1 py-0.2 rounded bg-blue-100 text-blue-800 font-bold hidden lg:inline">
+            {details.offset}
+          </span>
         </button>
 
         {/* Demo Role Switcher Dropdown (Crucial for evaluation!) */}
-        <div className="relative" ref={roleRef}>
+        <div className="relative shrink-0" ref={roleRef}>
           <button
+            id="navbar-role-switcher"
             onClick={() => setIsRoleMenuOpen(!isRoleMenuOpen)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition"
+            className="flex items-center gap-1 sm:gap-1.5 px-1.5 sm:px-2.5 py-1 sm:py-1.5 rounded-lg border border-slate-200 bg-slate-50 hover:bg-slate-100 text-xs font-semibold text-slate-700 transition cursor-pointer"
+            aria-label="Switch User Role"
           >
-            <ShieldCheck className="w-4 h-4 text-blue-600" />
+            <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-blue-600 shrink-0" />
             <span className="hidden md:inline">Role:</span>
-            <span className={`px-1.5 py-0.5 rounded text-[11px] font-bold border ${roleColors[user?.role || 'EMPLOYEE']}`}>
-              {roleLabel[user?.role || 'EMPLOYEE']}
+            <span className={`px-1 sm:px-1.5 py-0.5 rounded text-[10px] sm:text-[11px] font-bold border ${roleColors[user?.role || 'EMPLOYEE']}`}>
+              <span className="hidden sm:inline">{roleLabel[user?.role || 'EMPLOYEE']}</span>
+              <span className="sm:hidden">{user?.role === 'SUPER_ADMIN' ? 'Admin' : user?.role === 'ADMIN' ? 'HR' : user?.role === 'MANAGER' ? 'Lead' : 'Staff'}</span>
             </span>
-            <ChevronDown className="w-3.5 h-3.5 text-slate-400" />
+            <ChevronDown className="w-3 h-3 sm:w-3.5 sm:h-3.5 text-slate-400 shrink-0" />
           </button>
 
           {isRoleMenuOpen && (
-            <div className="absolute right-0 mt-2 w-72 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-72 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
               <div className="px-2 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 border-b border-slate-100 mb-1">
                 Switch Role Profile
               </div>
@@ -212,7 +273,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
                         setIsRoleMenuOpen(false);
                         await switchRole(demo.email);
                       }}
-                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition ${
+                      className={`w-full flex items-center justify-between p-2 rounded-lg text-left text-xs transition cursor-pointer ${
                         isCurrent ? 'bg-blue-50 text-blue-900 font-semibold' : 'hover:bg-slate-50 text-slate-700'
                       }`}
                     >
@@ -239,22 +300,24 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
         </div>
 
         {/* Notifications Popover */}
-        <div className="relative" ref={notifRef}>
+        <div className="relative shrink-0" ref={notifRef}>
           <button
+            id="navbar-notif-btn"
             onClick={() => setIsNotifOpen(!isNotifOpen)}
-            className="p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg relative transition"
+            className="p-1.5 sm:p-2 text-slate-600 hover:text-slate-900 hover:bg-slate-100 rounded-lg relative transition cursor-pointer"
             title="Notifications"
+            aria-label="Notifications"
           >
-            <Bell className="w-5 h-5" />
+            <Bell className="w-4 h-4 sm:w-5 sm:h-5" />
             {unreadCount > 0 && (
-              <span className="absolute top-1 right-1 w-4 h-4 bg-rose-600 text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-white">
+              <span className="absolute top-0.5 right-0.5 sm:top-1 sm:right-1 w-4 h-4 bg-rose-600 text-white rounded-full text-[10px] font-bold flex items-center justify-center border-2 border-white">
                 {unreadCount > 9 ? '9+' : unreadCount}
               </span>
             )}
           </button>
 
           {isNotifOpen && (
-            <div className="absolute right-0 mt-2 w-80 sm:w-96 bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-80 sm:w-96 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 z-50 overflow-hidden animate-in fade-in zoom-in-95">
               <div className="p-3 bg-slate-50 border-b border-slate-100 flex items-center justify-between">
                 <div className="flex items-center gap-2">
                   <span className="text-xs font-bold uppercase tracking-wider text-slate-700">Notifications</span>
@@ -335,7 +398,7 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
           </button>
 
           {isProfileOpen && (
-            <div className="absolute right-0 mt-2 w-64 bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
+            <div className="absolute right-0 mt-2 w-64 max-w-[calc(100vw-1.5rem)] bg-white rounded-xl shadow-xl border border-slate-200 p-2 z-50 animate-in fade-in zoom-in-95">
               <div className="p-2 border-b border-slate-100">
                 <div className="text-sm font-bold text-slate-900">{user?.fullName}</div>
                 <div className="text-xs text-slate-500 font-mono">{user?.employeeCode}</div>
@@ -382,6 +445,12 @@ export const Navbar: React.FC<NavbarProps> = ({ onOpenSearch, onNavigate }) => {
           )}
         </div>
       </div>
+
+      {/* Timezone Selector Modal */}
+      <TimezoneSelectorModal
+        isOpen={isTimezoneModalOpen}
+        onClose={() => setIsTimezoneModalOpen(false)}
+      />
     </header>
   );
 };

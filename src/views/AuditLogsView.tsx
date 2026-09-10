@@ -12,9 +12,11 @@ import {
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { AuditLogEntry } from '../types.ts';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const AuditLogsView: React.FC = () => {
   const [logs, setLogs] = useState<AuditLogEntry[]>([]);
+  const [page, setPage] = useState(1);
   const [actionFilter, setActionFilter] = useState('');
   const [searchQuery, setSearchQuery] = useState('');
   const [isLoading, setIsLoading] = useState(false);
@@ -35,6 +37,7 @@ export const AuditLogsView: React.FC = () => {
   };
 
   useEffect(() => {
+    setPage(1);
     loadLogs();
   }, [actionFilter]);
 
@@ -48,6 +51,8 @@ export const AuditLogsView: React.FC = () => {
       log.ip_address?.toLowerCase().includes(q)
     );
   });
+
+  const paginatedLogs = filteredLogs.slice((page - 1) * 10, page * 10);
 
   const actionColors: Record<string, string> = {
     CLOCK_IN: 'bg-emerald-50 text-emerald-800 border-emerald-200',
@@ -145,7 +150,7 @@ export const AuditLogsView: React.FC = () => {
                   </td>
                 </tr>
               ) : (
-                filteredLogs.map((entry) => (
+                paginatedLogs.map((entry) => (
                   <tr key={entry.id} className="hover:bg-slate-50/80 transition">
                     <td className="px-4 py-3 font-mono text-[11px] text-slate-500 whitespace-nowrap">
                       {new Date(entry.created_at).toLocaleString([], {
@@ -194,6 +199,14 @@ export const AuditLogsView: React.FC = () => {
             </tbody>
           </table>
         </div>
+
+        <Pagination
+          currentPage={page}
+          totalItems={filteredLogs.length}
+          pageSize={10}
+          onPageChange={setPage}
+          itemLabel="audit logs"
+        />
       </div>
     </div>
   );

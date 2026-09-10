@@ -13,10 +13,12 @@ import {
 } from 'lucide-react';
 import { api } from '../api.ts';
 import { useAuth } from '../context/AuthContext.tsx';
+import { Pagination } from '../components/Pagination.tsx';
 
 export const TeamsView: React.FC = () => {
   const { user } = useAuth();
   const [employees, setEmployees] = useState<any[]>([]);
+  const [page, setPage] = useState(1);
   const [departments, setDepartments] = useState<any[]>([]);
   const [teams, setTeams] = useState<any[]>([]);
   const [activeTab, setActiveTab] = useState<'employees' | 'org_structure'>('employees');
@@ -172,7 +174,9 @@ export const TeamsView: React.FC = () => {
                 </tr>
               </thead>
               <tbody className="divide-y divide-slate-100 text-slate-700">
-                {employees.map((e) => (
+                {employees
+                  .slice((page - 1) * 10, page * 10)
+                  .map((e) => (
                   <tr key={e.id} className="hover:bg-slate-50/80 transition">
                     <td className="px-4 py-3 font-mono font-bold text-blue-700">
                       {e.employee_code}
@@ -210,6 +214,14 @@ export const TeamsView: React.FC = () => {
               </tbody>
             </table>
           </div>
+
+          <Pagination
+            currentPage={page}
+            totalItems={employees.length}
+            pageSize={10}
+            onPageChange={setPage}
+            itemLabel="employees"
+          />
         </div>
       )}
 

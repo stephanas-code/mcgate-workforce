@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { AuthProvider, useAuth } from './context/AuthContext.tsx';
+import { TimezoneProvider } from './context/TimezoneContext.tsx';
 import { Navbar } from './components/Navbar.tsx';
 import { Sidebar } from './components/Sidebar.tsx';
 import { GlobalSearchModal } from './components/GlobalSearchModal.tsx';
@@ -45,30 +46,37 @@ const MainLayout: React.FC = () => {
     return <LoginView />;
   }
 
+  const handleNavigate = (view: string) => {
+    setCurrentView(view);
+    setIsSidebarOpen(false);
+  };
+
   return (
-    <div className="min-h-screen bg-slate-100 flex flex-col font-sans antialiased text-slate-800">
+    <div className="min-h-screen w-full max-w-[100vw] bg-slate-100 flex flex-col font-sans antialiased text-slate-800 overflow-x-hidden">
       {/* Top Navigation Bar */}
       <Navbar
         onToggleSidebar={() => setIsSidebarOpen((prev) => !prev)}
+        isSidebarOpen={isSidebarOpen}
         onOpenSearch={() => setIsSearchOpen(true)}
-        onNavigate={(view) => setCurrentView(view)}
+        onNavigate={handleNavigate}
+        currentView={currentView}
       />
 
       {/* Main Workspace Frame */}
-      <div className="flex-1 flex overflow-hidden">
+      <div className="flex-1 flex overflow-hidden w-full max-w-[100vw] relative">
         {/* Sidebar */}
         <Sidebar
           currentView={currentView}
-          onNavigate={(view) => setCurrentView(view)}
+          onNavigate={handleNavigate}
           isOpen={isSidebarOpen}
           onCloseMobile={() => setIsSidebarOpen(false)}
         />
 
         {/* Content View Container */}
-        <main className="flex-1 overflow-y-auto p-4 sm:p-6 lg:p-8">
-          <div className="max-w-7xl mx-auto">
+        <main className="flex-1 overflow-y-auto overflow-x-hidden p-3 sm:p-6 lg:p-8 w-full max-w-full min-w-0">
+          <div className="max-w-7xl mx-auto w-full min-w-0">
             {currentView === 'dashboard' && (
-              <DashboardView onNavigate={(view) => setCurrentView(view)} />
+              <DashboardView onNavigate={handleNavigate} />
             )}
             {currentView === 'attendance' && <AttendanceView />}
             {currentView === 'tasks' && <TasksView />}
@@ -86,12 +94,12 @@ const MainLayout: React.FC = () => {
       <GlobalSearchModal
         isOpen={isSearchOpen}
         onClose={() => setIsSearchOpen(false)}
-        onNavigate={(view) => setCurrentView(view)}
+        onNavigate={handleNavigate}
         onSelect={(type, id) => {
-          if (type === 'task') setCurrentView('tasks');
-          else if (type === 'project') setCurrentView('projects');
-          else if (type === 'assignment') setCurrentView('assignments');
-          else if (type === 'employee' || type === 'team') setCurrentView('teams');
+          if (type === 'task') handleNavigate('tasks');
+          else if (type === 'project') handleNavigate('projects');
+          else if (type === 'assignment') handleNavigate('assignments');
+          else if (type === 'employee' || type === 'team') handleNavigate('teams');
         }}
       />
     </div>
@@ -100,8 +108,10 @@ const MainLayout: React.FC = () => {
 
 export default function App() {
   return (
-    <AuthProvider>
-      <MainLayout />
-    </AuthProvider>
+    <TimezoneProvider>
+      <AuthProvider>
+        <MainLayout />
+      </AuthProvider>
+    </TimezoneProvider>
   );
 }
