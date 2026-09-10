@@ -28,39 +28,67 @@ app.use((_req, res, next) => {
   next();
 });
 
-// Mount Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/attendance', attendanceRoutes);
-app.use('/api/tasks', taskRoutes);
-app.use('/api/assignments', assignmentRoutes);
-app.use('/api/projects', projectRoutes);
-app.use('/api', teamRoutes);
-app.use('/api/reports', reportRoutes);
-app.use('/api/audit-logs', auditRoutes);
-app.use('/api/notifications', notificationRoutes);
-app.use('/api/settings', settingRoutes);
-app.use('/api/search', searchRoutes);
+// Cold-start database initialization - MUST run before route handlers
+let dbInitPromise: Promise<void> | null = null;
+app.use(async (_req, _res, next) => {
+  try {
+    if (!dbInitPromise) {
+      dbInitPromise = initDatabase().catch((err) => {
+        console.error('[Vercel DB Init Error]:', err);
+        dbInitPromise = null;
+        throw err;
+      });
+    }
+    await dbInitPromise;
+    next();
+  } catch (err) {
+    console.error('[Vercel DB Init Middleware Failed]:', err);
+    next(err);
+  }
+});
 
-// Health check
-app.get('/api/health', (_req, res) => {
+// Health check endpoints
+const healthHandler = (_req: express.Request, res: express.Response) => {
   res.json({
     status: 'ok',
     platform: 'McGate Workforce on Vercel Serverless',
+    database: 'initialized',
     timestamp: new Date().toISOString()
   });
-});
+};
 
-// Cold-start database initialization
-let dbInitPromise: Promise<void> | null = null;
-app.use(async (_req, _res, next) => {
-  if (!dbInitPromise) {
-    dbInitPromise = initDatabase().catch((err) => {
-      console.error('[Vercel DB Init Error]', err);
-      dbInitPromise = null;
-    });
-  }
-  await dbInitPromise;
-  next();
+app.get('/health', healthHandler);
+app.get('/api/health', healthHandler);
+
+// API Router configuration
+const apiRouter = express.Router();
+
+apiRouter.get('/health', healthHandler);
+apiRouter.use('/auth', authRoutes);
+apiRouter.use('/attendance', attendanceRoutes);
+apiRouter.use('/tasks', taskRoutes);
+apiRouter.use('/assignments', assignmentRoutes);
+apiRouter.use('/projects', projectRoutes);
+apiRouter.use('/', teamRoutes);
+apiRouter.use('/reports', reportRoutes);
+apiRouter.use('/audit-logs', auditRoutes);
+apiRouter.use('/notifications', notificationRoutes);
+apiRouter.use('/settings', settingRoutes);
+apiRouter.use('/search', searchRoutes);
+
+// Mount router at both /api and root to handle any Vercel URL rewrite behavior
+app.use('/api', apiRouter);
+app.use('/', apiRouter);
+
+// Global Error Handler for Vercel functions
+app.use((err: any, _req: express.Request, res: express.Response, _next: express.NextFunction) => {
+  console.error('[Vercel Serverless Function Error]:', err);
+  const status = typeof err.status === 'number' ? err.status : 500;
+  res.status(status).json({
+    error: err.message || 'Internal Server Error',
+    code: err.code || 'INTERNAL_SERVER_ERROR',
+    stack: process.env.NODE_ENV !== 'production' ? err.stack : undefined
+  });
 });
 
 export default app;
