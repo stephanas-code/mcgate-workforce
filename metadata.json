@@ -1,0 +1,6 @@
+{
+  "name": "McGate Technologies Platform",
+  "description": "Enterprise workforce, attendance, task, and project management platform for McGate Technologies with mandatory clock-in, flexible clock-out, RBAC, and reporting.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
