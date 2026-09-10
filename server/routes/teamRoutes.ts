@@ -174,7 +174,33 @@ router.get('/employees', authenticateToken, async (_req, res) => {
   }
 });
 
-// 4. Update Teammate / Employee Avatar (Allow teammates or admins to upload profile picture)
+// 4. Generate next auto-assigned Employee Code
+router.get('/employees/next-code', authenticateToken, async (_req, res) => {
+  try {
+    const rows = await queryAll<{ employee_code: string }>('SELECT employee_code FROM employees');
+    let maxNum = 0;
+    for (const r of rows) {
+      const match = (r.employee_code || '').match(/(\d+)/);
+      if (match) {
+        const n = parseInt(match[1], 10);
+        if (n > maxNum) maxNum = n;
+      }
+    }
+    let candidateNum = maxNum + 1;
+    let nextCode = `MGT-${String(candidateNum).padStart(3, '0')}`;
+    while (true) {
+      const collision = await queryOne('SELECT id FROM employees WHERE employee_code = ?', [nextCode]);
+      if (!collision) break;
+      candidateNum++;
+      nextCode = `MGT-${String(candidateNum).padStart(3, '0')}`;
+    }
+    res.json({ code: nextCode });
+  } catch (err: any) {
+    res.status(500).json({ error: 'Failed to generate next employee code' });
+  }
+});
+
+// 5. Update Teammate / Employee Avatar (Allow teammates or admins to upload profile picture)
 router.post('/employees/:id/avatar', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const employeeId = Number(req.params.id);
@@ -223,7 +249,7 @@ router.post('/employees/:id/avatar', authenticateToken, async (req: AuthRequest,
   }
 });
 
-// 5. Update Employee Details
+// 6. Update Employee Details
 router.put('/employees/:id', authenticateToken, async (req: AuthRequest, res) => {
   try {
     const employeeId = Number(req.params.id);
@@ -273,12 +299,12 @@ router.put('/employees/:id', authenticateToken, async (req: AuthRequest, res) =>
   }
 });
 
-// 6. Create new Employee + User (Admins / HR only)
+// 7. Create new Employee + User (Admins / HR only) with auto-assigned code
 router.post('/employees', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN'), async (req: AuthRequest, res) => {
   try {
     const {
       email,
-      password = 'password123',
+      password,
       role = 'EMPLOYEE',
       firstName,
       lastName,
@@ -286,36 +312,90 @@ router.post('/employees', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN'
       departmentId,
       teamId,
       phone,
-      employmentStatus = 'FULL_TIME'
+      employmentStatus = 'FULL_TIME',
+      avatarUrl,
+      employeeCode: requestedCode
     } = req.body;
 
-    if (!email || !firstName || !lastName || !jobTitle) {
-      return res.status(400).json({ error: 'Email, First Name, Last Name, and Job Title are required.' });
+    if (!email || !firstName || !lastName) {
+      return res.status(400).json({ error: 'Email, First Name, and Last Name are required.' });
     }
 
-    const existingUser = await queryOne('SELECT id FROM users WHERE email = ?', [email.trim().toLowerCase()]);
+    const cleanEmail = email.trim().toLowerCase();
+    const cleanFirst = firstName.trim();
+    const cleanLast = lastName.trim();
+    const cleanJobTitle = (jobTitle && jobTitle.trim()) ? jobTitle.trim() : 'Team Member';
+    const finalPassword = (password && String(password).trim()) ? String(password).trim() : 'password123';
+
+    // Normalize and validate corporate role
+    const validRoles = ['SUPER_ADMIN', 'ADMIN', 'MANAGER', 'EMPLOYEE'];
+    const finalRole = validRoles.includes(role?.toUpperCase()) ? role.toUpperCase() : 'EMPLOYEE';
+
+    // Verify existing user / cleanup orphaned records
+    const existingUser = await queryOne<{ id: number }>('SELECT id FROM users WHERE email = ?', [cleanEmail]);
     if (existingUser) {
-      return res.status(400).json({ error: 'A user with this email address already exists.' });
+      const existingEmp = await queryOne<{ id: number }>('SELECT id FROM employees WHERE user_id = ?', [existingUser.id]);
+      if (existingEmp) {
+        return res.status(400).json({ error: 'A user with this corporate email address already exists.' });
+      }
+      // If orphaned user with no employee record, remove it to allow clean registration
+      await execute('DELETE FROM users WHERE id = ?', [existingUser.id]);
     }
 
-    const passwordHash = bcrypt.hashSync(password, 10);
+    // Auto-generate or validate unique employee code
+    let finalEmpCode = (requestedCode && String(requestedCode).trim()) ? String(requestedCode).trim().toUpperCase() : '';
+    if (!finalEmpCode) {
+      const rows = await queryAll<{ employee_code: string }>('SELECT employee_code FROM employees');
+      let maxNum = 0;
+      for (const r of rows) {
+        const match = (r.employee_code || '').match(/(\d+)/);
+        if (match) {
+          const n = parseInt(match[1], 10);
+          if (n > maxNum) maxNum = n;
+        }
+      }
+      let candidateNum = maxNum + 1;
+      while (true) {
+        const candidateCode = `MGT-${String(candidateNum).padStart(3, '0')}`;
+        const collision = await queryOne('SELECT id FROM employees WHERE employee_code = ?', [candidateCode]);
+        if (!collision) {
+          finalEmpCode = candidateCode;
+          break;
+        }
+        candidateNum++;
+      }
+    } else {
+      // If code was supplied, ensure no duplicate exists; otherwise auto-assign
+      const collision = await queryOne('SELECT id FROM employees WHERE employee_code = ?', [finalEmpCode]);
+      if (collision) {
+        const rows = await queryAll<{ employee_code: string }>('SELECT employee_code FROM employees');
+        let maxNum = 0;
+        for (const r of rows) {
+          const match = (r.employee_code || '').match(/(\d+)/);
+          if (match) {
+            const n = parseInt(match[1], 10);
+            if (n > maxNum) maxNum = n;
+          }
+        }
+        finalEmpCode = `MGT-${String(maxNum + 1).padStart(3, '0')}`;
+      }
+    }
+
+    const passwordHash = bcrypt.hashSync(finalPassword, 10);
     const now = new Date().toISOString();
 
     const { lastInsertRowid: userId } = await execute(`
       INSERT INTO users (email, password_hash, role, status, created_at, updated_at)
       VALUES (?, ?, ?, 'ACTIVE', ?, ?)
-    `, [email.trim().toLowerCase(), passwordHash, role, now, now]);
-
-    const count = await queryOne<{ count: number }>('SELECT COUNT(*) as count FROM employees');
-    const empCode = `MGT-${String((count?.count || 0) + 1).padStart(3, '0')}`;
+    `, [cleanEmail, passwordHash, finalRole, now, now]);
 
     const { lastInsertRowid: empId } = await execute(`
       INSERT INTO employees (
-        user_id, employee_code, first_name, last_name, phone, job_title,
+        user_id, employee_code, first_name, last_name, avatar_url, phone, job_title,
         department_id, team_id, employment_status, joined_date, created_at
-      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
     `, [
-      userId, empCode, firstName.trim(), lastName.trim(), phone || '', jobTitle.trim(),
+      userId, finalEmpCode, cleanFirst, cleanLast, avatarUrl || null, phone || '', cleanJobTitle,
       departmentId || null, teamId || null, employmentStatus, now.split('T')[0], now
     ]);
 
@@ -327,20 +407,21 @@ router.post('/employees', authenticateToken, requireRoles('SUPER_ADMIN', 'ADMIN'
       resource: 'EMPLOYEE',
       resourceId: empId,
       ipAddress: req.ip,
-      afterValue: `Created employee ${empCode} (${firstName} ${lastName}, ${role})`
+      afterValue: `Created employee ${finalEmpCode} (${cleanFirst} ${cleanLast}, ${finalRole})`
     });
 
     res.status(201).json({
       success: true,
       message: 'Employee registered successfully',
       employeeId: empId,
-      employeeCode: empCode,
+      employeeCode: finalEmpCode,
       userId
     });
   } catch (err: any) {
     console.error('Create employee error:', err);
-    res.status(500).json({ error: 'Failed to create employee.' });
+    res.status(500).json({ error: err.message || 'Failed to create employee.' });
   }
 });
 
 export default router;
+

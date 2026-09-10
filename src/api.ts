@@ -271,6 +271,7 @@ export const api = {
   getTeams: () => request<any[]>('/api/teams'),
   createTeam: (data: any) => request<any>('/api/teams', { method: 'POST', body: JSON.stringify(data) }),
   getEmployees: () => request<any[]>('/api/employees'),
+  getNextEmployeeCode: () => request<{ code: string }>('/api/employees/next-code'),
   createEmployee: (data: any) => request<any>('/api/employees', { method: 'POST', body: JSON.stringify(data) }),
 
   // Reports

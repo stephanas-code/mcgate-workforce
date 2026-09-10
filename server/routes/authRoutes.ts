@@ -66,8 +66,12 @@ router.post('/login', async (req, res) => {
     }
 
     let user = await queryOne<{ id: number; email: string; password_hash: string; role: string; status: string }>(
-      'SELECT id, email, password_hash, role, status FROM users WHERE email = ?',
-      [queryEmail]
+      `SELECT u.id, u.email, u.password_hash, u.role, u.status 
+       FROM users u
+       LEFT JOIN employees e ON e.user_id = u.id
+       WHERE LOWER(u.email) = ? OR LOWER(e.employee_code) = ?
+       LIMIT 1`,
+      [queryEmail, normalizedInput]
     );
 
     // Fallback: if user entered superuser or admin and was not found, check any active SUPER_ADMIN

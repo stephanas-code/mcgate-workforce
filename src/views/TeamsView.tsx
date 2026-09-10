@@ -53,11 +53,28 @@ export const TeamsView: React.FC = () => {
     avatarUrl: ''
   });
   const [modalError, setModalError] = useState<string | null>(null);
+  const [onboardSuccessMessage, setOnboardSuccessMessage] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const newEmpPhotoRef = useRef<HTMLInputElement>(null);
 
   const role = user?.role || 'SUPER_ADMIN';
   const isAdmin = role === 'SUPER_ADMIN' || role === 'ADMIN';
+
+  const fetchNextCode = async () => {
+    try {
+      const res = await api.getNextEmployeeCode();
+      if (res?.code) {
+        setNewEmployee((prev) => ({ ...prev, employeeCode: res.code }));
+      }
+    } catch {
+      // Fallback calculation from local employee list
+      const maxNum = employees.reduce((max, emp) => {
+        const m = (emp.employee_code || '').match(/(\d+)/);
+        return m ? Math.max(max, parseInt(m[1], 10)) : max;
+      }, 0);
+      setNewEmployee((prev) => ({ ...prev, employeeCode: `MGT-${String(maxNum + 1).padStart(3, '0')}` }));
+    }
+  };
 
   const loadData = async () => {
     try {
@@ -149,20 +166,29 @@ export const TeamsView: React.FC = () => {
 
   const handleCreateEmployee = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!newEmployee.employeeCode || !newEmployee.firstName || !newEmployee.lastName || !newEmployee.email) {
-      setModalError('Please fill in all mandatory fields.');
+    if (!newEmployee.firstName.trim() || !newEmployee.lastName.trim() || !newEmployee.email.trim()) {
+      setModalError('Please fill in First Name, Last Name, and Enterprise Email.');
       return;
     }
 
     setIsSubmitting(true);
     setModalError(null);
     try {
-      await api.createEmployee({
+      const res = await api.createEmployee({
         ...newEmployee,
+        firstName: newEmployee.firstName.trim(),
+        lastName: newEmployee.lastName.trim(),
+        email: newEmployee.email.trim(),
+        jobTitle: newEmployee.jobTitle.trim() || 'Team Member',
+        password: newEmployee.password.trim() || 'password123',
         departmentId: newEmployee.departmentId ? Number(newEmployee.departmentId) : undefined,
         teamId: newEmployee.teamId ? Number(newEmployee.teamId) : undefined
       });
       setIsAddEmployeeModalOpen(false);
+      const assignedCode = res.employeeCode || newEmployee.employeeCode || 'Assigned';
+      setOnboardSuccessMessage(
+        `Colleague ${newEmployee.firstName.trim()} ${newEmployee.lastName.trim()} onboarded successfully! Auto-assigned Employee Code: ${assignedCode}. They can now log in using either their Corporate Email (${newEmployee.email.trim()}) or Employee Code (${assignedCode}) with password: ${newEmployee.password || 'password123'}.`
+      );
       setNewEmployee({
         employeeCode: '',
         firstName: '',
@@ -204,6 +230,22 @@ export const TeamsView: React.FC = () => {
 
   return (
     <div className="space-y-6">
+      {/* Onboard Success Notification */}
+      {onboardSuccessMessage && (
+        <div className="p-4 bg-emerald-50 border border-emerald-300 text-emerald-900 text-xs font-semibold rounded-2xl flex items-center justify-between shadow-xs animate-in fade-in">
+          <div className="flex items-center gap-2">
+            <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0" />
+            <span>{onboardSuccessMessage}</span>
+          </div>
+          <button
+            onClick={() => setOnboardSuccessMessage(null)}
+            className="p-1 hover:bg-emerald-100 rounded-lg text-emerald-700 cursor-pointer"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      )}
+
       {/* Header with professional corporate styling */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 bg-white p-6 rounded-2xl border border-slate-200 shadow-xs">
         <div>
@@ -221,7 +263,10 @@ export const TeamsView: React.FC = () => {
 
         {isAdmin && (
           <button
-            onClick={() => setIsAddEmployeeModalOpen(true)}
+            onClick={() => {
+              fetchNextCode();
+              setIsAddEmployeeModalOpen(true);
+            }}
             className="px-4 py-2.5 bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold rounded-xl shadow-md shadow-blue-500/20 transition flex items-center gap-2 cursor-pointer shrink-0"
           >
             <Plus className="w-4 h-4" />
@@ -229,6 +274,7 @@ export const TeamsView: React.FC = () => {
           </button>
         )}
       </div>
+
 
       {/* Tabs & Search Bar */}
       <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b border-indigo-100 pb-3">
@@ -647,15 +693,21 @@ export const TeamsView: React.FC = () => {
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-xs font-bold text-slate-700 mb-1">Employee Code</label>
-                  <input
-                    type="text"
-                    required
-                    placeholder="EMP-010"
-                    value={newEmployee.employeeCode}
-                    onChange={(e) => setNewEmployee({ ...newEmployee, employeeCode: e.target.value })}
-                    className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
-                  />
+                  <div className="flex items-center justify-between mb-1">
+                    <label className="block text-xs font-bold text-slate-700">Employee Code</label>
+                    <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-1.5 py-0.5 rounded border border-emerald-200">
+                      Auto-Assigned
+                    </span>
+                  </div>
+                  <div className="relative">
+                    <input
+                      type="text"
+                      readOnly
+                      placeholder="Generating..."
+                      value={newEmployee.employeeCode || 'MGT-001'}
+                      className="w-full px-3 py-2 bg-slate-50 border border-slate-300 rounded-xl text-xs font-mono font-bold text-slate-700 cursor-not-allowed select-all"
+                    />
+                  </div>
                 </div>
                 <div>
                   <label className="block text-xs font-bold text-slate-700 mb-1">Corporate Role</label>
@@ -710,27 +762,34 @@ export const TeamsView: React.FC = () => {
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Initial Password</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Initial Password</label>
+                  <span className="text-[11px] text-slate-500 font-medium">Default: password123</span>
+                </div>
                 <input
-                  type="password"
+                  type="text"
                   required
                   value={newEmployee.password}
                   onChange={(e) => setNewEmployee({ ...newEmployee, password: e.target.value })}
-                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                  placeholder="password123"
+                  className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 font-mono"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-slate-700 mb-1">Designated Job Title</label>
+                <div className="flex items-center justify-between mb-1">
+                  <label className="block text-xs font-bold text-slate-700">Designated Job Title</label>
+                  <span className="text-[11px] text-slate-400 font-medium">Optional (defaults to Team Member)</span>
+                </div>
                 <input
                   type="text"
-                  required
-                  placeholder="Senior Cloud Systems Architect"
+                  placeholder="e.g. Senior Cloud Systems Architect"
                   value={newEmployee.jobTitle}
                   onChange={(e) => setNewEmployee({ ...newEmployee, jobTitle: e.target.value })}
                   className="w-full px-3 py-2 border border-slate-300 rounded-xl text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
                 />
               </div>
+
 
               <div className="grid grid-cols-2 gap-3">
                 <div>
