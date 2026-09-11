@@ -17,7 +17,8 @@
     "build:rpm": "npm run build:node && electron-builder --linux rpm AppImage",
     "electron:dev": "npm run build:node && electron .",
     "electron:start": "electron .",
-    "preview": "vite preview",
+    "cpanel:build": "powershell -ExecutionPolicy Bypass -File ./build_cpanel_zip.ps1",
+    "cpanel:zip": "powershell -ExecutionPolicy Bypass -File ./build_cpanel_zip.ps1",
     "clean": "rm -rf dist server.js release",
     "lint": "tsc --noEmit"
   },

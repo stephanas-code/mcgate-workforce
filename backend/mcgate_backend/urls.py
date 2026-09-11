@@ -23,6 +23,10 @@ urlpatterns = [
     re_path(r'^assets/(?P<path>.*)$', serve, {'document_root': str(dist_dir / 'assets')}),
     re_path(r'^(?P<path>favicon\.svg|logo\.svg|favicon\.ico)$', serve, {'document_root': str(dist_dir)}),
 
+    # Direct staticfiles and media serving (guarantees Django admin styles and uploads work on cPanel)
+    re_path(r'^static/(?P<path>.*)$', serve, {'document_root': str(settings.STATIC_ROOT)}),
+    re_path(r'^media/(?P<path>.*)$', serve, {'document_root': str(settings.MEDIA_ROOT)}),
+
     # Single Page Application catch-all: serves index.html for all non-API client routes
     re_path(r'^(?!api/|django-admin/|assets/|static/|media/).*$', serve_spa, name='spa_root'),
 ]

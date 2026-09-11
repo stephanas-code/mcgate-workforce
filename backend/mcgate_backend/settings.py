@@ -8,6 +8,13 @@ from dotenv import load_dotenv
 # Load environment variables
 load_dotenv()
 
+# Support MySQL on cPanel via pure-Python PyMySQL
+try:
+    import pymysql
+    pymysql.install_as_MySQLdb()
+except ImportError:
+    pass
+
 BASE_DIR = Path(__file__).resolve().parent.parent
 
 # Ensure apps directory is on python path
@@ -17,7 +24,8 @@ sys.path.insert(0, str(BASE_DIR))
 SECRET_KEY = os.environ.get('SECRET_KEY', 'mcgate-workforce-django-secret-key-enterprise-2026-production')
 DEBUG = os.environ.get('DEBUG', 'True').lower() in ('true', '1', 'yes')
 
-ALLOWED_HOSTS = ['*']
+ALLOWED_HOSTS = [host.strip() for host in os.environ.get('ALLOWED_HOSTS', '*').split(',') if host.strip()]
+CSRF_TRUSTED_ORIGINS = [origin.strip() for origin in os.environ.get('CSRF_TRUSTED_ORIGINS', '').split(',') if origin.strip()]
 
 INSTALLED_APPS = [
     'django.contrib.admin',
@@ -82,19 +90,37 @@ TEMPLATES = [
     },
 ]
 
-# Database configuration: uses /tmp on Vercel serverless for writable SQLite, or DATABASE_URL for Postgres
-if os.environ.get('VERCEL') and not os.environ.get('DATABASE_URL'):
-    default_db = "sqlite:////tmp/mcgate.sqlite3"
+# Database configuration:
+# 1. cPanel MySQL environment variables (DB_NAME, DB_USER, DB_PASSWORD, DB_HOST, DB_PORT)
+# 2. DATABASE_URL (dj_database_url: PostgreSQL/MySQL/SQLite)
+# 3. SQLite default: writable /tmp on Vercel, or backend/data/mcgate.sqlite3 for cPanel/local
+db_engine = os.environ.get('DB_ENGINE', '')
+if (db_engine == 'django.db.backends.mysql' or os.environ.get('DB_NAME')) and not os.environ.get('DATABASE_URL'):
+    DATABASES = {
+        'default': {
+            'ENGINE': 'django.db.backends.mysql',
+            'NAME': os.environ.get('DB_NAME'),
+            'USER': os.environ.get('DB_USER', ''),
+            'PASSWORD': os.environ.get('DB_PASSWORD', ''),
+            'HOST': os.environ.get('DB_HOST', 'localhost'),
+            'PORT': os.environ.get('DB_PORT', '3306'),
+            'OPTIONS': {
+                'charset': 'utf8mb4',
+            },
+        }
+    }
 else:
-    default_db = f"sqlite:///{BASE_DIR / 'data' / 'mcgate.sqlite3'}"
+    if os.environ.get('VERCEL') and not os.environ.get('DATABASE_URL'):
+        default_db = "sqlite:////tmp/mcgate.sqlite3"
+    else:
+        default_db = f"sqlite:///{BASE_DIR / 'data' / 'mcgate.sqlite3'}"
 
-DATABASES = {
-    'default': dj_database_url.config(
-        default=default_db,
-        conn_max_age=600
-    )
-}
-
+    DATABASES = {
+        'default': dj_database_url.config(
+            default=default_db,
+            conn_max_age=600
+        )
+    }
 
 # Ensure data directory exists for SQLite
 os.makedirs(BASE_DIR / 'data', exist_ok=True)
@@ -121,13 +147,17 @@ USE_TZ = True
 
 # Static & Media
 STATIC_URL = '/static/'
-STATIC_ROOT = BASE_DIR / 'staticfiles'
-STATICFILES_DIRS = [
-    BASE_DIR / 'templates' / 'dist',
-]
-MEDIA_URL = '/media/'
-MEDIA_ROOT = BASE_DIR / 'media'
+STATIC_ROOT = Path(os.environ.get('STATIC_ROOT', str(BASE_DIR / 'staticfiles')))
+STATICFILES_DIRS = []
+if (BASE_DIR / 'templates' / 'dist').exists():
+    STATICFILES_DIRS.append(BASE_DIR / 'templates' / 'dist')
+if (BASE_DIR.parent / 'dist').exists() and (BASE_DIR.parent / 'dist') not in STATICFILES_DIRS:
+    STATICFILES_DIRS.append(BASE_DIR.parent / 'dist')
 
+MEDIA_URL = '/media/'
+MEDIA_ROOT = Path(os.environ.get('MEDIA_ROOT', str(BASE_DIR / 'media')))
+os.makedirs(MEDIA_ROOT, exist_ok=True)
+os.makedirs(STATIC_ROOT, exist_ok=True)
 
 # WhiteNoise static compression
 STATICFILES_STORAGE = 'whitenoise.storage.CompressedManifestStaticFilesStorage'
