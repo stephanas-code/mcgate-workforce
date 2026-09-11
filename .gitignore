@@ -7,3 +7,13 @@ coverage/
 .env*
 !.env.example
 release/
+venv/
+.venv/
+__pycache__/
+*.py[cod]
+*$py.class
+backend/data/
+backend/staticfiles/
+backend/media/
+db.sqlite3
+
