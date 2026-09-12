@@ -16,4 +16,4 @@ backend/data/
 backend/staticfiles/
 backend/media/
 db.sqlite3
-
+*.zip

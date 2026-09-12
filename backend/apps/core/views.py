@@ -1,10 +1,31 @@
 import os
 from pathlib import Path
 from django.conf import settings
-from django.http import HttpResponse, FileResponse
+from django.http import HttpResponse, FileResponse, JsonResponse
+from django.db import connection
 
 TEMPLATES_DIST = settings.BASE_DIR / 'templates' / 'dist'
 ROOT_DIST = settings.BASE_DIR.parent / 'dist'
+
+
+def health_check(request):
+    """
+    Liveness probe endpoint for Kubernetes.
+    Returns 200 OK to confirm the web process is running.
+    """
+    return JsonResponse({"status": "healthy", "service": "mcgate-workforce"})
+
+
+def readiness_check(request):
+    """
+    Readiness probe endpoint for Kubernetes.
+    Verifies database connectivity before accepting incoming user traffic.
+    """
+    try:
+        connection.ensure_connection()
+        return JsonResponse({"status": "ready", "database": "connected"})
+    except Exception as e:
+        return JsonResponse({"status": "unready", "database": str(e)}, status=503)
 
 
 def get_dist_root():
@@ -39,3 +60,4 @@ def serve_spa(request, *args, **kwargs):
         """,
         status=503
     )
+

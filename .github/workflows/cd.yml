@@ -1,0 +1,212 @@
+name: Deploy McGate Workforce to Kubernetes
+
+on:
+  repository_dispatch:
+    types:
+      - update-deployment
+  workflow_dispatch:
+    inputs:
+      image_tag:
+        description: "Docker image tag to deploy (e.g. commit SHA or 'latest')"
+        required: true
+        default: "latest"
+
+permissions:
+  contents: write
+
+concurrency:
+  group: mcgate-workforce-deployment
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to Kubernetes Cluster
+    runs-on: ubuntu-latest
+
+    env:
+      IMAGE_REGISTRY: mcgatehub
+      IMAGE_NAME: mcgate-workforce
+      NAMESPACE: mcgate
+      WEB_DEPLOYMENT: mcgate-workforce-web
+      POSTGRES_DEPLOYMENT: mcgate-workforce-postgres
+
+    steps:
+      # ============================================================
+      # CHECKOUT REPOSITORY
+      # ============================================================
+      - name: Checkout Repository
+        uses: actions/checkout@v4
+
+      # ============================================================
+      # RESOLVE IMAGE TAG
+      # ============================================================
+      - name: Resolve Image Tag
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          if [ "${{ github.event_name }}" = "repository_dispatch" ]; then
+            TAG="${{ github.event.client_payload.image_tag }}"
+          else
+            TAG="${{ github.event.inputs.image_tag }}"
+          fi
+
+          if [ -z "$TAG" ]; then
+            TAG="latest"
+          fi
+
+          echo "IMAGE_TAG=${TAG}" >> "$GITHUB_ENV"
+          echo "=========================================="
+          echo "DEPLOYING MCGATE WORKFORCE"
+          echo "=========================================="
+          echo "Target Namespace: $NAMESPACE"
+          echo "Target Image:     ${IMAGE_REGISTRY}/${IMAGE_NAME}:${TAG}"
+          echo "=========================================="
+
+      # ============================================================
+      # CONFIGURE KUBERNETES CREDENTIALS
+      # ============================================================
+      - name: Configure Kubernetes credentials
+        shell: bash
+        env:
+          KUBE_CONFIG: ${{ secrets.KUBE_CONFIG }}
+        run: |
+          set -euo pipefail
+
+          if [ -z "${KUBE_CONFIG:-}" ]; then
+            echo "ERROR: KUBE_CONFIG secret is not configured in GitHub repository secrets."
+            exit 1
+          fi
+
+          mkdir -p "${HOME}/.kube"
+
+          printf '%s' "$KUBE_CONFIG" \
+            | base64 --decode \
+            > "${HOME}/.kube/config"
+
+          chmod 600 "${HOME}/.kube/config"
+          echo "Kubernetes credentials configured successfully."
+
+      # ============================================================
+      # VERIFY CLUSTER CONNECTIVITY
+      # ============================================================
+      - name: Verify Kubernetes cluster connectivity
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=========================================="
+          echo "CLUSTER CONNECTION CHECK"
+          echo "=========================================="
+          kubectl cluster-info
+          echo ""
+          kubectl get nodes -o wide
+
+      # ============================================================
+      # ENSURE NAMESPACE & IMAGE PULL SECRET
+      # ============================================================
+      - name: Ensure Namespace and Docker Hub secret
+        shell: bash
+        env:
+          DOCKER_USERNAME: ${{ secrets.DOCKER_USERNAME }}
+          DOCKER_PASSWORD: ${{ secrets.DOCKER_PASSWORD }}
+        run: |
+          set -euo pipefail
+
+          # Create namespace if it does not exist
+          kubectl create namespace "$NAMESPACE" --dry-run=client -o yaml | kubectl apply -f -
+
+          # Create or update Docker Hub image pull secret if credentials are provided
+          if [ -n "${DOCKER_USERNAME:-}" ] && [ -n "${DOCKER_PASSWORD:-}" ]; then
+            echo "Configuring Docker Hub image pull secret 'mcgate-dockerhub-secret'..."
+            kubectl create secret docker-registry mcgate-dockerhub-secret \
+              --namespace="$NAMESPACE" \
+              --docker-server=https://index.docker.io/v1/ \
+              --docker-username="$DOCKER_USERNAME" \
+              --docker-password="$DOCKER_PASSWORD" \
+              --dry-run=client -o yaml | kubectl apply -f -
+          fi
+
+      # ============================================================
+      # APPLY KUBERNETES MANIFESTS
+      # ============================================================
+      - name: Apply Kubernetes Production Manifest
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Applying manifests from k8s/workforce.yaml..."
+          kubectl apply -f k8s/workforce.yaml
+
+      # ============================================================
+      # UPDATE APPLICATION IMAGE
+      # ============================================================
+      - name: Update Deployment Image
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          FULL_IMAGE="${IMAGE_REGISTRY}/${IMAGE_NAME}:${IMAGE_TAG}"
+          echo "Setting image on deployment/${WEB_DEPLOYMENT} to ${FULL_IMAGE}..."
+
+          kubectl set image deployment/"$WEB_DEPLOYMENT" \
+            web="$FULL_IMAGE" \
+            -n "$NAMESPACE"
+
+      # ============================================================
+      # MONITOR ROLLOUT
+      # ============================================================
+      - name: Monitor Rollout Status
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "Waiting for postgres rollout..."
+          kubectl rollout status deployment/"$POSTGRES_DEPLOYMENT" \
+            -n "$NAMESPACE" \
+            --timeout=180s
+
+          echo "Waiting for web application rollout (timeout: 10m)..."
+          kubectl rollout status deployment/"$WEB_DEPLOYMENT" \
+            -n "$NAMESPACE" \
+            --timeout=600s
+
+      # ============================================================
+      # VERIFY PODS & ENDPOINTS
+      # ============================================================
+      - name: Verify Running Workloads
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          echo "=========================================="
+          echo "MCGATE WORKFORCE DEPLOYMENT STATUS"
+          echo "=========================================="
+          kubectl get deployments -n "$NAMESPACE" -l 'app in (mcgate-workforce-web,mcgate-workforce-postgres)' -o wide
+          echo ""
+          kubectl get pods -n "$NAMESPACE" -l 'app in (mcgate-workforce-web,mcgate-workforce-postgres)' -o wide
+          echo ""
+          kubectl get svc -n "$NAMESPACE" -l 'app=mcgate-workforce-web'
+
+      # ============================================================
+      # AUTOMATED FAILURE DIAGNOSTICS
+      # ============================================================
+      - name: Capture Failure Diagnostics
+        if: failure()
+        shell: bash
+        run: |
+          echo "============================================================"
+          echo "DEPLOYMENT FAILED - CAPTURING DIAGNOSTIC LOGS"
+          echo "============================================================"
+
+          echo "--- KUBERNETES EVENTS ---"
+          kubectl get events -n "$NAMESPACE" --sort-by='.lastTimestamp' | tail -100 || true
+
+          echo "--- PODS ---"
+          kubectl get pods -n "$NAMESPACE" -o wide || true
+
+          echo "--- WEB DEPLOYMENT DESCRIBE ---"
+          kubectl describe deployment "$WEB_DEPLOYMENT" -n "$NAMESPACE" || true
+
+          echo "--- WEB POD LOGS ---"
+          kubectl logs deployment/"$WEB_DEPLOYMENT" -n "$NAMESPACE" --tail=200 --prefix=true || true
